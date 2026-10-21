@@ -52,9 +52,12 @@ export async function prepare(opts: { force?: boolean } = {}): Promise<void> {
 
     if (config.android) {
       log('prepare', 'installing JDK 21 + Android SDK (Homebrew, inside the VM)');
-      await ssh(ip, 'brew install --quiet --cask temurin@21 android-commandlinetools', 30 * 60_000);
+      // Non-interactive SSH gets a bare PATH, so spell Homebrew out.
       const sdk = '/opt/homebrew/share/android-commandlinetools';
-      await ssh(ip, `yes | sdkmanager --licenses >/dev/null; sdkmanager --install ${config.androidPackages} >/dev/null`, 30 * 60_000);
+      const path = `export PATH=/opt/homebrew/bin:${sdk}/cmdline-tools/latest/bin:$PATH;`;
+      await ssh(ip, `${path} brew install --quiet --cask temurin@21 android-commandlinetools`, 30 * 60_000);
+      const packages = config.androidPackages.split(/\s+/).map((p) => `'${p}'`).join(' '); // `;` in package names
+      await ssh(ip, `${path} yes | sdkmanager --licenses >/dev/null; sdkmanager --install ${packages} >/dev/null`, 30 * 60_000);
       // The runner loads .env into every job's environment.
       await ssh(ip, `printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\nJAVA_HOME=%s\n' ${sdk} ${sdk} "$(/usr/libexec/java_home -v 21)" > ~/actions-runner/.env && cat ~/actions-runner/.env`);
     }
