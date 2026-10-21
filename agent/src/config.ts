@@ -3,16 +3,23 @@ import { join } from 'node:path';
 
 const env = (name: string, fallback: string) => process.env[name] || fallback;
 
+export type Backend = 'tart' | 'docker';
+
 export const config = {
+  /** tart: fresh macOS VM per job (Apple Silicon). docker: fresh container from the runner image per job (any OS). */
+  backend: env('CARDINAL_BACKEND', 'tart') as Backend,
+  /** Docker backend: image to run. The public Cardinal image works out of the box. */
+  dockerImage: env('CARDINAL_DOCKER_IMAGE', 'vcr.vercel.com/jvaught01s-projects/cardinal/cardinal-runner:v0.3'),
+  docker: env('CARDINAL_DOCKER', 'docker'),
   /** Tart binary. `brew install cirruslabs/cli/tart`, or the release tarball in ~/.local. */
   tart: env('CARDINAL_TART', 'tart'),
   stateDir: env('CARDINAL_MAC_STATE', join(homedir(), '.cardinal', 'mac')),
   /** Pulled once; `prepare` derives the base VM from it. */
   sourceImage: env('CARDINAL_MAC_IMAGE', 'ghcr.io/cirruslabs/macos-tahoe-xcode:26.4.1'),
   baseVm: env('CARDINAL_MAC_BASE', 'cardinal-mac-base'),
-  /** Jobs opt in with `runs-on: cardinal-macos`. */
-  label: env('CARDINAL_MAC_LABEL', 'cardinal-macos'),
-  runnerLabels: ['cardinal-macos', 'cardinal', 'macos'],
+  /** Jobs opt in with `runs-on: cardinal-macos` (tart) or `runs-on: cardinal-docker` (docker). */
+  label: env('CARDINAL_MAC_LABEL', process.env.CARDINAL_BACKEND === 'docker' ? 'cardinal-docker' : 'cardinal-macos'),
+  runnerLabels: process.env.CARDINAL_BACKEND === 'docker' ? ['cardinal-docker', 'cardinal-agent'] : ['cardinal-macos', 'cardinal-agent', 'macos'],
   cpu: Number(env('CARDINAL_MAC_CPU', '8')),
   memoryMb: Number(env('CARDINAL_MAC_MEMORY_MB', '16384')),
   /** Apple's Virtualization.framework allows two VMs per host. */

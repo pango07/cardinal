@@ -1,11 +1,11 @@
 {
-  "name": "cardinal-mac",
+  "name": "cardinal-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Cardinal macOS driver: ephemeral Tart VMs on an Apple Silicon host, one GitHub Actions job each",
+  "description": "Cardinal agent: run GitHub Actions jobs on your own machine, one fresh VM or container per job",
   "type": "module",
   "bin": {
-    "cardinal-mac": "./src/main.ts"
+    "cardinal-agent": "./src/main.ts"
   },
   "scripts": {
     "prepare-base": "node src/main.ts prepare",

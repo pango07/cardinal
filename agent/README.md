@@ -1,4 +1,13 @@
-# cardinal-mac
+# cardinal-agent
+
+Run GitHub Actions jobs on a machine you own, one fresh environment per job. Two backends:
+
+- **tart** (default): a fresh **macOS** VM per job on an Apple Silicon Mac. Xcode, simulators, `xcodebuild test`. Label `cardinal-macos`.
+- **docker**: a fresh container from the public Cardinal runner image per job, on anything that runs Docker (Linux box, old laptop, a teammate's machine). Label `cardinal-docker`. Start it with `CARDINAL_BACKEND=docker node src/main.ts run --repo you/app`; no `prepare` step.
+
+The rest of this page is about the macOS backend.
+
+## macOS
 
 Ephemeral **macOS** runners for GitHub Actions, on an Apple Silicon Mac you own. Same idea as the Linux side of Cardinal: a job is queued, a fresh VM boots, the runner inside claims that one job, runs it, and the VM is deleted. Xcode, simulators and `xcodebuild test` all work, because it's real macOS.
 
@@ -32,7 +41,7 @@ Polling instead of a webhook because your Mac isn't reachable from the internet,
 ## Setup
 
 ```bash
-cd mac
+cd agent
 node src/main.ts prepare          # pulls the image (once, slow), boots it, installs our SSH key + actions/runner
                                   # + JDK 21 and the Android SDK (CARDINAL_MAC_ANDROID=0 to skip), shuts it down
 node src/main.ts run --repo you/app --repo you/other-app
@@ -41,8 +50,8 @@ node src/main.ts run --repo you/app --repo you/other-app
 Leave `run` running. It sweeps leftover VMs at startup, and Ctrl-C waits for in-flight jobs. To make it a service that starts at login, restarts on failure and keeps the Mac awake while on power:
 
 ```bash
-mac/install-service.sh you/app you/other-app     # launchd user agent; logs in ~/Library/Logs/cardinal-mac/
-mac/install-service.sh --uninstall
+agent/install-service.sh you/app you/other-app     # launchd user agent; logs in ~/Library/Logs/cardinal-mac/
+agent/install-service.sh --uninstall
 ```
 
 ## Configuration

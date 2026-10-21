@@ -53,7 +53,7 @@ Caveat: `actions/checkout` runs `git clean -ffdx` by default, which deletes igno
 ## Beyond the brief
 
 - **`cardinal-android`**: a second Dockerfile stage (`image/Dockerfile`, `--target android`) with Temurin JDK 21 and the Android SDK. Jobs find them through the runner's own `.env`/`.path` files, since Sandbox doesn't apply Docker `ENV`. Selected per label via `RunnerSize.image`.
-- **macOS driver** (`mac/`): the brief's phase 2. Vercel has no macOS compute, so it's a polling agent on an Apple Silicon Mac that clones a Tart VM per job from a cirruslabs Xcode image, runs the runner over SSH with the JIT config on stdin, and deletes the VM. Two VMs per host is Apple's limit.
+- **macOS driver** (`agent/`): the brief's phase 2. Vercel has no macOS compute, so it's a polling agent on an Apple Silicon Mac that clones a Tart VM per job from a cirruslabs Xcode image, runs the runner over SSH with the JIT config on stdin, and deletes the VM. Two VMs per host is Apple's limit.
 
 ## Deviations from the brief
 

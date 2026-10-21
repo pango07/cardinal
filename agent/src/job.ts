@@ -2,12 +2,45 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { config, vmPrefix } from './config.ts';
+import { runContainer } from './docker.ts';
 import { tryRun } from './exec.ts';
 import { GitHubError, generateJitConfig, type QueuedJob } from './github.ts';
 import { log } from './log.ts';
 import { boot, ssh, sshArgs, stopAndDelete, tart, waitForIp, waitForSsh } from './tart.ts';
 
 export async function runOneJob(job: QueuedJob): Promise<void> {
+  return config.backend === 'docker' ? runOneJobDocker(job) : runOneJobTart(job);
+}
+
+async function runOneJobDocker(job: QueuedJob): Promise<void> {
+  const runnerName = `cardinal-docker-${job.id}`;
+  const started = Date.now();
+  let jit;
+  try {
+    jit = await generateJitConfig(job.repo, runnerName, config.runnerLabels);
+  } catch (err) {
+    if (err instanceof GitHubError && err.status === 409) {
+      log(runnerName, 'runner already registered, skipping');
+      return;
+    }
+    throw err;
+  }
+  const container = runContainer(`${vmPrefix}${job.id}`, jit.encoded_jit_config, (line) => {
+    if (line.trim()) console.log(`[${runnerName}] ${line}`);
+  });
+  const killer = setTimeout(() => {
+    log(runnerName, `job timeout after ${config.jobTimeoutMs / 60_000} min, stopping container`);
+    container.kill();
+  }, config.jobTimeoutMs);
+  try {
+    const exitCode = await container.done;
+    log(runnerName, `job summary ${JSON.stringify({ repo: job.repo, jobId: job.id, backend: 'docker', durationMs: Date.now() - started, exitCode })}`);
+  } finally {
+    clearTimeout(killer);
+  }
+}
+
+async function runOneJobTart(job: QueuedJob): Promise<void> {
   const runnerName = `cardinal-mac-${job.id}`;
   const vm = `${vmPrefix}${job.id}`;
   const started = Date.now();

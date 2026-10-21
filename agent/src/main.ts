@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// cardinal-mac: ephemeral macOS runners for GitHub Actions, on an Apple Silicon host.
+// cardinal-agent: run GitHub Actions jobs on this machine, one fresh VM (tart, macOS) or container (docker) per job.
 //
-//   cardinal-mac prepare [--force]            build the base VM (pulls the Xcode image, ~70 GB, once)
+//   cardinal-agent prepare [--force]            build the base VM (pulls the Xcode image, ~70 GB, once)
 //   cardinal-mac run --repo owner/name [...]  poll those repos and run every `runs-on: cardinal-macos` job in its own VM
 //   cardinal-mac sweep                        delete leftover job VMs
 import { parseArgs } from 'node:util';
 import { config, vmPrefix } from './config.ts';
+import { pullImage, removeContainers } from './docker.ts';
 import { sleep } from './exec.ts';
 import { queuedJobs } from './github.ts';
 import { runOneJob } from './job.ts';
@@ -34,11 +35,15 @@ switch (command) {
     await main();
     break;
   default:
-    console.error('usage: cardinal-mac prepare [--force] | run --repo owner/name [--repo ...] [--once] | sweep');
+    console.error('usage: cardinal-agent prepare [--force] | run --repo owner/name [--repo ...] [--once] | sweep');
     process.exit(64);
 }
 
 async function sweep(): Promise<void> {
+  if (config.backend === 'docker') {
+    for (const n of await removeContainers(vmPrefix)) log('sweep', `removed container ${n}`);
+    return;
+  }
   for (const vm of await listVms()) {
     if (!vm.name.startsWith(vmPrefix)) continue;
     log('sweep', `deleting ${vm.name}`);
@@ -49,7 +54,8 @@ async function sweep(): Promise<void> {
 async function main(): Promise<void> {
   const repos = (values.repo.length ? values.repo : (process.env.CARDINAL_MAC_REPOS ?? '').split(',')).map((r) => r.trim()).filter(Boolean);
   if (!repos.length) throw new Error('pass --repo owner/name (or CARDINAL_MAC_REPOS)');
-  if (!(await vmExists(config.baseVm))) throw new Error(`base VM ${config.baseVm} missing; run \`cardinal-mac prepare\` first`);
+  if (config.backend === 'docker') await pullImage();
+  else if (!(await vmExists(config.baseVm))) throw new Error(`base VM ${config.baseVm} missing; run \`prepare\` first`);
   await sweep();
 
   const active = new Map<number, Promise<void>>();
@@ -62,7 +68,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 
-  log('run', `watching ${repos.join(', ')} for runs-on: ${config.label}`, { concurrency: config.concurrency, base: config.baseVm });
+  log('run', `watching ${repos.join(', ')} for runs-on: ${config.label}`, { backend: config.backend, concurrency: config.concurrency, ...(config.backend === 'tart' ? { base: config.baseVm } : { image: config.dockerImage }) });
   while (!stopping) {
     if (active.size < config.concurrency) {
       for (const repo of repos) {

@@ -48,7 +48,7 @@ RUNNER_VERSION=2.338.0 ../image/push.sh v0.1 android     # → cardinal-runner-a
 vercel env add CARDINAL_IMAGE_ANDROID production         # cardinal-runner-android:v0.1
 ```
 
-For macOS jobs (`runs-on: cardinal-macos`), see [mac/README.md](../mac/README.md); that part runs on a Mac, not on Vercel.
+For macOS jobs (`runs-on: cardinal-macos`), see [agent/README.md](../agent/README.md); that part runs on a Mac, not on Vercel.
 
 ## 3. Deploy the dispatcher
 

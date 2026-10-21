@@ -65,7 +65,8 @@ Measured, not estimated: GitHub queue → runner listening in **3 s**, sandbox c
 |---|---|---|
 | Node, Python, Go, Rust, anything `apt` can install | `cardinal` · `cardinal-4x` · `cardinal-8x` | Ubuntu 24.04, Node 22, git, jq. 2 / 4 / 8 vCPU with 2 GB per vCPU |
 | **Android** | `cardinal-android` | Everything above plus Temurin JDK 21 and the Android SDK (API 36/37, build-tools 36.1). 8 vCPU / 16 GB. No `setup-java`, no license step |
-| **macOS, iOS, Xcode** | `cardinal-macos` | macOS 26 with Xcode 26.4.1 and iOS simulators, in a fresh Tart VM on an Apple Silicon host you own. See [mac/](mac/) |
+| **macOS, iOS, Xcode** | `cardinal-macos` | macOS 26 with Xcode 26.4.1 and iOS simulators, in a fresh Tart VM on an Apple Silicon host you own. See [agent/](agent/) |
+| **Your own machines** | `cardinal-docker` | The same runner image as a fresh container per job, on any box running Docker: `CARDINAL_BACKEND=docker node agent/src/main.ts run --repo you/app` |
 
 Everything in that table is verified on real projects: a Turborepo monorepo typecheck + test, a full Android app build with lint and 721 Robolectric tests (~4.5 min), 178 Roborazzi screenshot comparisons, and `xcodebuild test` on iPhone and iPad simulators.
 
@@ -141,7 +142,7 @@ Details in [docs/LIMITS.md](docs/LIMITS.md).
 ```
 image/        Dockerfile for the runner images (base + android stage), push script
 dispatcher/   Next.js app on Vercel: the webhook, GitHub App auth, the Vercel Sandbox driver
-mac/          cardinal-mac: the macOS driver (Tart VMs on Apple Silicon)
+agent/        cardinal-agent: run jobs on your own machines (Tart VMs on macOS, Docker anywhere)
 bench/        benchmark workflow, CPU workload, results collector, RESULTS.md
 docs/         SETUP.md, LIMITS.md, FINDINGS.md (every measurement and gotcha so far)
 examples/     a workflow that runs on: cardinal

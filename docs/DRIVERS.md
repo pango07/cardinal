@@ -1,6 +1,6 @@
 # Writing a driver
 
-A driver is how Cardinal turns "run this job" into compute somewhere. The webhook, GitHub App, labels, pre-boot and sweep never change; a driver only has to boot a machine from the runner image, run the entrypoint with one environment variable, and tear the machine down. The Vercel Sandbox driver is ~150 lines; the macOS one (`mac/`) is the same idea against Tart VMs.
+A driver is how Cardinal turns "run this job" into compute somewhere. The webhook, GitHub App, labels, pre-boot and sweep never change; a driver only has to boot a machine from the runner image, run the entrypoint with one environment variable, and tear the machine down. The Vercel Sandbox driver is ~150 lines; the macOS one (`agent/`) is the same idea against Tart VMs.
 
 Good candidates: Fly Machines, AWS Fargate, Hetzner Cloud, Modal, E2B, Northflank, a homelab Proxmox, anything with an API that can start a container or VM from an image in a few seconds.
 
