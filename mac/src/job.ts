@@ -50,7 +50,8 @@ function runRunner(ip: string, jitConfig: string, runnerName: string): Promise<n
   return new Promise((resolve, reject) => {
     const child = spawn(
       'ssh',
-      [...sshArgs(ip), 'IFS= read -r JIT; cd ~/actions-runner && exec ./run.sh --jitconfig "$JIT"'],
+      // A login shell, so the runner (and every job) gets the PATH a terminal would have: Homebrew, Xcode tools.
+      [...sshArgs(ip), `zsh -lc 'IFS= read -r JIT; cd ~/actions-runner && exec ./run.sh --jitconfig "$JIT"'`],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     );
     child.stdin.end(jitConfig + '\n');
