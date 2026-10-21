@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { cardinalLabel, idleTimeoutSec, runnerLabels, sizeForLabels } from './config';
+import { cardinalLabel, defaultImage, idleTimeoutSec, runnerLabels, sizeForLabels } from './config';
 import { estimateCost } from './cost';
 import type { RunnerDriver, RunnerSize } from './drivers/types';
 import {
@@ -135,7 +135,7 @@ export function warmKey(owner: string, repo: string, jobName: string): string {
 const tagSafe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '-').slice(0, 60);
 
 function imageTag(size: RunnerSize): string {
-  return tagSafe(size.image ?? process.env.CARDINAL_IMAGE ?? 'none');
+  return tagSafe(size.image ?? defaultImage());
 }
 
 /** The newest green default-branch sandbox for this job, built from the image we'd boot today. */

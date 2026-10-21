@@ -1,4 +1,5 @@
 import { APIError, Sandbox, type Command } from '@vercel/sandbox';
+import { defaultImage } from '../config';
 import type { RunnerDriver, RunOneJobInput, RunOneJobResult, SandboxInfo } from './types';
 
 const ENTRYPOINT = '/home/runner/entrypoint.sh';
@@ -9,7 +10,7 @@ export const vercelSandboxDriver: RunnerDriver = {
 
   async runOneJob({ jitConfig, size, runnerName, idleTimeoutSec, watchMs, tags, persist }: RunOneJobInput) {
     const started = Date.now();
-    const image = size.image ?? required('CARDINAL_IMAGE');
+    const image = size.image ?? defaultImage();
     const common = {
       // The sandbox name doubles as the handle `stop()` uses when workflow_job.completed arrives.
       name: runnerName,
@@ -138,10 +139,4 @@ async function streamLogs(cmd: Command, runnerName: string, signal: AbortSignal)
   } catch {
     // Log streaming is best-effort; it ends with an error when the sandbox stops.
   }
-}
-
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set`);
-  return value;
 }

@@ -1,5 +1,16 @@
 # Setup
 
+## The short way (5 minutes)
+
+1. Click **Deploy with Vercel** in the README. It creates a project from this repo with `dispatcher/` as the root.
+2. Open `https://<your-deployment>/setup`, click **Create the GitHub App**, and copy the three values GitHub hands back.
+3. In Vercel → Settings → Environment Variables (Production) add `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`. Optionally `CRON_SECRET` (any random string) to lock `/api/sweep` to Vercel's cron. Redeploy.
+4. Install the App on your repos. Done: `runs-on: cardinal`, `cardinal-4x`, `cardinal-8x`, `cardinal-android` all work, booting the public images `jvaught01s-projects/cardinal/cardinal-runner:v0.3` and `…/cardinal-runner-android:v0.4`.
+
+The rest of this page is the long way: your own images, the CLI, and the macOS host.
+
+## The long way
+
 About 30 minutes, start to green check. You need:
 
 - A **Vercel Pro** team. Hobby caps functions at 300 s and sandboxes at 45 min.
@@ -17,7 +28,9 @@ vercel link            # create a new project, e.g. "cardinal"
 
 The image registry, sandboxes and dispatcher all live in this one project. That's how OIDC auth works without tokens.
 
-## 2. Build and push the runner image
+## 2. Build and push the runner image (optional)
+
+Skip this to use the public images; set `CARDINAL_IMAGE` / `CARDINAL_IMAGE_ANDROID` only if you build your own.
 
 ```bash
 # still in dispatcher/, so the push targets the linked project

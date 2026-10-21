@@ -1,5 +1,13 @@
 import type { RunnerSize } from './drivers/types';
 
+// Public images published from the Cardinal project. Override with CARDINAL_IMAGE / CARDINAL_IMAGE_ANDROID
+// to use your own (e.g. after `image/push.sh`).
+export const PUBLIC_IMAGES = {
+  runner: 'jvaught01s-projects/cardinal/cardinal-runner:v0.3',
+  android: 'jvaught01s-projects/cardinal/cardinal-runner-android:v0.4',
+};
+export const defaultImage = () => process.env.CARDINAL_IMAGE || PUBLIC_IMAGES.runner;
+
 const timeoutMs = Number(process.env.CARDINAL_TIMEOUT_MINUTES ?? 60) * 60_000;
 
 // Sandbox memory is fixed at 2048 MB per vCPU; memoryMb is informational (cost estimates).
@@ -8,7 +16,7 @@ export const SIZES: Record<string, RunnerSize> = {
   'cardinal-4x': { vcpus: 4, memoryMb: 8192,  timeoutMs },
   'cardinal-8x': { vcpus: 8, memoryMb: 16384, timeoutMs },
   // JDK 21 + Android SDK baked in (image/Dockerfile, `android` stage). Gradle + Kotlin want the memory.
-  'cardinal-android': { vcpus: 8, memoryMb: 16384, timeoutMs, image: process.env.CARDINAL_IMAGE_ANDROID },
+  'cardinal-android': { vcpus: 8, memoryMb: 16384, timeoutMs, image: process.env.CARDINAL_IMAGE_ANDROID || PUBLIC_IMAGES.android },
 };
 
 // Labels every self-hosted runner gets implicitly. They may appear in `runs-on` but must not be

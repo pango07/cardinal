@@ -71,16 +71,16 @@ Everything in that table is verified on real projects: a Turborepo monorepo type
 
 ## Get running
 
-About 30 minutes, on a Vercel Pro account. [docs/SETUP.md](docs/SETUP.md) walks through it; the shape is:
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpango07%2Fcardinal&root-directory=dispatcher&project-name=cardinal&repository-name=cardinal)
 
-```bash
-cd dispatcher && npm install && vercel link        # 1. one Vercel project holds the dispatcher, images and sandboxes
-../image/push.sh v0.1                               # 2. build + push the runner image (~380 MB)
-vercel deploy --prod                                # 3. deploy the webhook
-npm run create-app -- --url https://<your-domain>   # 4. one click creates the GitHub App and stores its keys in Vercel
-```
+Five minutes, on a Vercel Pro account:
 
-Then install the App on a repo, put `runs-on: cardinal` in a workflow, and push.
+1. **Deploy** with the button (it clones this repo and deploys `dispatcher/`). The runner images are public, so there's nothing to build.
+2. Open **`https://<your-deployment>/setup`** and click *Create the GitHub App*. GitHub creates the App with the right permissions and webhook; the next page shows three values.
+3. Paste them as Production env vars (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`) and redeploy.
+4. Install the App on a repo, put `runs-on: cardinal` in a workflow, push.
+
+Prefer your own images, a CLI-only flow, or want macOS? [docs/SETUP.md](docs/SETUP.md).
 
 ## Speed
 
