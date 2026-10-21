@@ -1,0 +1,22 @@
+{
+  "name": "cardinal-mac",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cardinal macOS driver: ephemeral Tart VMs on an Apple Silicon host, one GitHub Actions job each",
+  "type": "module",
+  "bin": {
+    "cardinal-mac": "./src/main.ts"
+  },
+  "scripts": {
+    "prepare-base": "node src/main.ts prepare",
+    "start": "node src/main.ts run",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

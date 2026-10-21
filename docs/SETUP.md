@@ -28,6 +28,15 @@ This creates a `cardinal-runner` repository in Vercel Container Registry, logs D
 
 The image lands at `vcr.vercel.com/<team-slug>/<project>/cardinal-runner:<tag>`. To push somewhere else, set `CARDINAL_IMAGE_REF=<that path, no tag>`. On Apple Silicon the amd64 build runs under emulation and takes a few minutes; the push is about 380 MB.
 
+Optional, for Android jobs (`runs-on: cardinal-android`): a second image with JDK 21 and the Android SDK baked in.
+
+```bash
+RUNNER_VERSION=2.338.0 ../image/push.sh v0.1 android     # → cardinal-runner-android:v0.1, ~1.5 GB
+vercel env add CARDINAL_IMAGE_ANDROID production         # cardinal-runner-android:v0.1
+```
+
+For macOS jobs (`runs-on: cardinal-macos`), see [mac/README.md](../mac/README.md); that part runs on a Mac, not on Vercel.
+
 ## 3. Deploy the dispatcher
 
 ```bash

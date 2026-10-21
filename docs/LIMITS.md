@@ -31,7 +31,7 @@ One job per sandbox, always. Concurrency is limited only by your Vercel plan (Pr
 
 ## Platform
 
-Linux amd64 only in v1. No macOS or Windows. No arm64 yet.
+Linux amd64 on Vercel Sandbox. macOS arm64 through [`mac/`](../mac/README.md), on your own Apple Silicon hardware: at most 2 VMs per Mac, about 25 s boot, and the Mac has to be on. No Windows, no Linux arm64 yet.
 
 ## Runner ≠ job
 

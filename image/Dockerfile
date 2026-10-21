@@ -1,6 +1,8 @@
-# Cardinal runner image: Ubuntu 24.04 + actions/runner, driven by entrypoint.sh.
-# Build context is this directory:  docker buildx build --platform linux/amd64 image/
-FROM ubuntu:24.04
+# Cardinal runner images, driven by entrypoint.sh. Build context is this directory.
+#
+#   runner  (default)  Ubuntu 24.04 + actions/runner + Node 22              docker buildx build --platform linux/amd64 image/
+#   android            runner + JDK 21 + Android SDK, for Gradle/AGP jobs   ... --target android image/
+FROM ubuntu:24.04 AS runner
 
 ARG RUNNER_VERSION=latest
 # ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT is deliberately off: it dumps the runner's full trace log
@@ -41,3 +43,44 @@ COPY --chown=runner:runner --chmod=0755 entrypoint.sh /home/runner/entrypoint.sh
 # Vercel Sandbox ignores ENTRYPOINT/CMD; the dispatcher runs entrypoint.sh via runCommand.
 # Kept here so `docker run` behaves the same way for local testing.
 CMD ["/home/runner/entrypoint.sh"]
+
+# ---------------------------------------------------------------------------------------------------------------------
+# android: the runner image plus what an Android Gradle build needs, so a job can skip setup-java and SDK installs.
+# Env for jobs comes from the runner's own .env/.path files (read by run.sh), since Sandbox doesn't apply Docker ENV.
+FROM runner AS android
+
+ARG CMDLINE_TOOLS=13114758
+ARG ANDROID_PLATFORMS="platforms;android-37.0 platforms;android-36"
+ARG ANDROID_BUILD_TOOLS="build-tools;36.1.0"
+
+USER root
+# Temurin JDK 21 (what actions/setup-java installs). fontconfig + a font: Robolectric/Roborazzi render text
+# through AWT, which fails without any system font.
+RUN apt-get update && apt-get install -y --no-install-recommends fontconfig libfreetype6 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/jdk-21 \
+    && curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse" \
+       | tar -xz -C /opt/jdk-21 --strip-components=1 \
+    && /opt/jdk-21/bin/java -version \
+    && mkdir -p /opt/android-sdk && chown runner:runner /opt/android-sdk
+USER runner
+
+ENV JAVA_HOME=/opt/jdk-21 \
+    PATH=/opt/jdk-21/bin:$PATH
+ENV ANDROID_HOME=/opt/android-sdk
+RUN curl -fsSL -o /tmp/cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS}_latest.zip" \
+    && mkdir -p "$ANDROID_HOME/cmdline-tools" \
+    && unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools" \
+    && mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" \
+    && rm /tmp/cmdline-tools.zip \
+    && sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+    && yes | "$sdkmanager" --licenses >/dev/null \
+    && "$sdkmanager" --install "platform-tools" $ANDROID_PLATFORMS $ANDROID_BUILD_TOOLS >/dev/null \
+    && rm -rf "$ANDROID_HOME/.temp" /home/runner/.android/cache
+
+# The actions runner loads .env into every job's environment and prepends .path to PATH.
+RUN printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\nJAVA_HOME=%s\nJAVA_HOME_21_X64=%s\n' \
+         "$ANDROID_HOME" "$ANDROID_HOME" "$JAVA_HOME" "$JAVA_HOME" > /home/runner/.env \
+    && printf '%s/cmdline-tools/latest/bin:%s/platform-tools:%s/bin:%s\n' \
+         "$ANDROID_HOME" "$ANDROID_HOME" "$JAVA_HOME" "$PATH" > /home/runner/.path \
+    && cat /home/runner/.env /home/runner/.path

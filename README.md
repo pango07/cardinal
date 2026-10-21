@@ -10,7 +10,7 @@ jobs:
     runs-on: cardinal        # cardinal-4x, cardinal-8x for more vCPUs
 ```
 
-The first compute target is [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox). Others plug in as drivers.
+Linux jobs run on [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) microVMs. macOS jobs (iOS builds, Xcode tests) run on ephemeral [Tart](https://github.com/cirruslabs/tart) VMs on an Apple Silicon Mac you own, via [`mac/`](mac/). Other targets plug in as drivers.
 
 ## How it works
 
@@ -31,20 +31,22 @@ workflow_job.completed ─────► stop sandbox by runner name ───�
 
 Runners register with **JIT configs**: single-use, and they deregister themselves. Auth is a **GitHub App**, not a PAT.
 
-## Sizes
+## Labels
 
-| Label | vCPU | Memory |
-|---|---|---|
-| `cardinal` | 2 | 4 GB |
-| `cardinal-4x` | 4 | 8 GB |
-| `cardinal-8x` | 8 | 16 GB |
+| Label | Where | vCPU | Memory | Extras |
+|---|---|---|---|---|
+| `cardinal` | Vercel Sandbox | 2 | 4 GB | Ubuntu 24.04, Node 22, git, jq |
+| `cardinal-4x` | Vercel Sandbox | 4 | 8 GB | same |
+| `cardinal-8x` | Vercel Sandbox | 8 | 16 GB | same |
+| `cardinal-android` | Vercel Sandbox | 8 | 16 GB | + JDK 21, Android SDK (API 36/37, build-tools 36.1) |
+| `cardinal-macos` | Tart VM on your Mac | 8 | 16 GB | macOS 26, Xcode 26.4.1, simulators, + JDK 21, Android SDK |
 
 ## Known limits
 
 - **No Docker.** There's no nested virtualization in the sandbox. `container:`, `services:` and Docker-based actions fail. Most Node, Python, Go and Rust jobs never need Docker.
 - **Max job length** = sandbox timeout. 60 min by default; Pro allows 24h.
 - **Concurrency** = your Vercel plan quota (Pro: 10,000 sandboxes; the vCPU allocation rate ramps from 150/min).
-- **Linux amd64 only** in v1.
+- **macOS needs a Mac.** `cardinal-macos` jobs run on your own Apple Silicon machine (2 VMs at a time per Mac). See [mac/README.md](mac/README.md).
 - **Public repos:** don't let fork PRs run on Cardinal; it's your compute. See [SECURITY.md](SECURITY.md).
 
 Details: [docs/LIMITS.md](docs/LIMITS.md).

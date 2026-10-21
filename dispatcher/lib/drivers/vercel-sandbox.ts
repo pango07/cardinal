@@ -11,7 +11,7 @@ export const vercelSandboxDriver: RunnerDriver = {
     const sandbox = await Sandbox.create({
       // The sandbox name doubles as the handle `stop()` uses when workflow_job.completed arrives.
       name: runnerName,
-      image: required('CARDINAL_IMAGE'),
+      image: size.image ?? required('CARDINAL_IMAGE'),
       resources: { vcpus: size.vcpus },
       timeout: size.timeoutMs,
       persistent: false,

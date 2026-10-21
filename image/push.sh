@@ -2,13 +2,15 @@
 # Builds the runner image and pushes it to Vercel Container Registry for the linked project.
 # Run from a directory linked with `vercel link` (e.g. dispatcher/).
 #
-# Usage: image/push.sh [tag]           (default tag: v0.1)
-# Env:   RUNNER_VERSION=2.338.0        pin actions/runner (default: latest)
-#        CARDINAL_IMAGE_REF=<ref>      skip discovery and push here, e.g. vcr.vercel.com/<team>/<project>/cardinal-runner
+# Usage: image/push.sh [tag] [variant]      tag defaults to v0.1; variant is a Dockerfile stage: runner (default) or android
+# Env:   RUNNER_VERSION=2.338.0             pin actions/runner (default: latest)
+#        CARDINAL_IMAGE_REF=<ref>           skip discovery and push here, e.g. vcr.vercel.com/<team>/<project>/cardinal-runner
 set -euo pipefail
 
 tag="${1:-v0.1}"
+variant="${2:-runner}"
 repo="cardinal-runner"
+[[ "$variant" == "runner" ]] || repo="cardinal-runner-$variant"
 here="$(cd "$(dirname "$0")" && pwd)"
 
 if [[ -z "${CARDINAL_IMAGE_REF:-}" ]]; then
@@ -29,9 +31,11 @@ docker buildx build \
   --platform linux/amd64 \
   --build-arg "RUNNER_VERSION=${RUNNER_VERSION:-latest}" \
   --provenance=false \
+  --target "$variant" \
   -t "$CARDINAL_IMAGE_REF:$tag" \
   --push \
   "$here"
 
 echo
-echo "pushed. set CARDINAL_IMAGE=$repo:$tag in the dispatcher project."
+var="CARDINAL_IMAGE"; [[ "$variant" == "runner" ]] || var="CARDINAL_IMAGE_$(tr '[:lower:]' '[:upper:]' <<<"$variant")"
+echo "pushed. set $var=$repo:$tag in the dispatcher project."

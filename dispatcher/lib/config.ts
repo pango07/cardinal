@@ -7,6 +7,8 @@ export const SIZES: Record<string, RunnerSize> = {
   'cardinal':    { vcpus: 2, memoryMb: 4096,  timeoutMs },
   'cardinal-4x': { vcpus: 4, memoryMb: 8192,  timeoutMs },
   'cardinal-8x': { vcpus: 8, memoryMb: 16384, timeoutMs },
+  // JDK 21 + Android SDK baked in (image/Dockerfile, `android` stage). Gradle + Kotlin want the memory.
+  'cardinal-android': { vcpus: 8, memoryMb: 16384, timeoutMs, image: process.env.CARDINAL_IMAGE_ANDROID },
 };
 
 // Labels every self-hosted runner gets implicitly. They may appear in `runs-on` but must not be

@@ -35,6 +35,11 @@ See [bench/RESULTS.md](../bench/RESULTS.md). `cardinal-4x` beats a 4 vCPU `ubunt
 - **Image size: 378 MB** (`docker image inspect`, linux/amd64, actions/runner 2.338.0, Node 22.23). Target was < 600 MB.
 - Runner version and libraries verified in-container: `Runner.Listener --version` works and `.NET` loads ICU/OpenSSL.
 
+## Beyond the brief
+
+- **`cardinal-android`**: a second Dockerfile stage (`image/Dockerfile`, `--target android`) with Temurin JDK 21 and the Android SDK. Jobs find them through the runner's own `.env`/`.path` files, since Sandbox doesn't apply Docker `ENV`. Selected per label via `RunnerSize.image`.
+- **macOS driver** (`mac/`): the brief's phase 2. Vercel has no macOS compute, so it's a polling agent on an Apple Silicon Mac that clones a Tart VM per job from a cirruslabs Xcode image, runs the runner over SSH with the JIT config on stdin, and deletes the VM. Two VMs per host is Apple's limit.
+
 ## Deviations from the brief
 
 - **`vercel vcr build` / `vcr push` are documented but missing** from Vercel CLI 56.4. `image/push.sh` uses `vercel vcr login docker` + `docker buildx build --push` to `vcr.vercel.com/<team-slug>/<project>/cardinal-runner`, which works with any CLI version.

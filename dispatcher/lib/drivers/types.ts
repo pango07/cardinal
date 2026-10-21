@@ -2,6 +2,8 @@ export interface RunnerSize {
   vcpus: number;
   memoryMb: number;
   timeoutMs: number;
+  /** Image to boot instead of the default runner image (e.g. the android variant). */
+  image?: string;
 }
 
 export interface RunOneJobInput {
