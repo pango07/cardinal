@@ -221,7 +221,19 @@ describe('sweepRepo', () => {
     ]);
     const r = await sweepRepo(d, 99, 'acme', 'repo');
     expect(r.dispatched).toBe(1);
-    expect(d.driver.runOneJob.mock.calls[0][0].runnerName).toBe('cardinal-1');
+    expect(d.driver.runOneJob.mock.calls[0][0].runnerName).toMatch(/^cardinal-1-r[0-9a-z]+$/);
+  });
+
+  it('keeps sweeping when one re-dispatch fails', async () => {
+    const d = deps();
+    d.queuedJobs.mockResolvedValue([
+      { id: 1, labels: ['cardinal'], created_at: old, status: 'queued' },
+      { id: 2, labels: ['cardinal'], created_at: old, status: 'queued' },
+    ]);
+    d.driver.runOneJob.mockRejectedValueOnce(new Error('sandbox name exists'));
+    const r = await sweepRepo(d, 99, 'acme', 'repo');
+    expect(r.dispatched).toBe(1);
+    expect(d.driver.runOneJob).toHaveBeenCalledTimes(2);
   });
 
   it('counts each idle runner against one queued job', async () => {
@@ -233,7 +245,21 @@ describe('sweepRepo', () => {
     d.repoRunners.mockResolvedValue([runner('cardinal-spec-x-0', ['cardinal'])]);
     const r = await sweepRepo(d, 99, 'acme', 'repo');
     expect(r.dispatched).toBe(1);
-    expect(d.driver.runOneJob.mock.calls[0][0].runnerName).toBe('cardinal-2');
+    expect(d.driver.runOneJob.mock.calls[0][0].runnerName).toMatch(/^cardinal-2-r/);
+  });
+
+  it('does not delete an offline runner that is still booting', async () => {
+    const d = deps();
+    withSnapshots(d, [{ name: 'cardinal-spec-abc1234-0', status: 'running', tags: { app: 'cardinal' } }]);
+    d.queuedJobs.mockResolvedValue([{ id: 8, labels: ['cardinal'], created_at: fresh, status: 'queued' }]);
+    d.repoRunners.mockResolvedValue([
+      { ...runner('cardinal-8', ['cardinal'], { status: 'offline' }), id: 1 }, // minted for a fresh job, not connected yet
+      { ...runner('cardinal-spec-abc1234-0', ['cardinal'], { status: 'offline' }), id: 2 }, // sandbox still running
+      { ...runner('cardinal-3', ['cardinal'], { status: 'offline' }), id: 3 }, // dead
+    ]);
+    const r = await sweepRepo(d, 99, 'acme', 'repo');
+    expect(r.removed).toBe(1);
+    expect(d.deleteRunner).toHaveBeenCalledWith(99, 'acme', 'repo', 3);
   });
 
   it('removes offline cardinal runners and nothing else', async () => {

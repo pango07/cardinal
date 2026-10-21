@@ -196,22 +196,38 @@ export async function sweepRepo(deps: Deps, installationId: number, owner: strin
     deps.repoRunners(installationId, owner, repo),
   ]);
   const idle = runners.filter((r) => r.status === 'online' && !r.busy);
+  const stale = (job: { created_at: string }) => Date.now() - Date.parse(job.created_at) >= SWEEP_MIN_QUEUED_MS;
   for (const job of queued) {
-    if (!cardinalLabel(job.labels)) continue;
-    if (Date.now() - Date.parse(job.created_at) < SWEEP_MIN_QUEUED_MS) continue;
+    if (!cardinalLabel(job.labels) || !stale(job)) continue;
     const match = idle.findIndex((r) => covers(r, job.labels));
     if (match >= 0) {
       idle.splice(match, 1); // one idle runner serves one job
       continue;
     }
-    await dispatchJob(deps, installationId, owner, repo, job);
-    dispatched++;
-  }
-  for (const r of runners) {
-    if (r.name.startsWith('cardinal-') && r.status === 'offline') {
-      await deps.deleteRunner(installationId, owner, repo, r.id).catch(() => {});
-      removed++;
+    // A fresh name: the first attempt's registration may linger on GitHub and its sandbox may be kept as a snapshot.
+    try {
+      await dispatchJob(deps, installationId, owner, repo, job, `cardinal-${job.id}-r${Date.now().toString(36)}`);
+      dispatched++;
+    } catch (err) {
+      console.error('cardinal sweep could not re-dispatch', { repo: `${owner}/${repo}`, jobId: job.id, err: String(err) });
     }
+  }
+
+  // Dead registrations: offline cardinal-* runners. A JIT runner is "offline" from the moment it's minted until it
+  // connects, so skip anything that may still be booting: compute the driver reports as running, and runners for
+  // jobs queued too recently for the sweep to own.
+  const booting = new Set<string>();
+  if (deps.driver.snapshots) {
+    for (const s of await deps.driver.snapshots.listTagged('app', 'cardinal')) {
+      if (s.status !== 'stopped' && s.status !== 'failed' && s.status !== 'aborted') booting.add(s.name);
+    }
+  }
+  const freshJobs = new Set(queued.filter((j) => !stale(j)).map((j) => `cardinal-${j.id}`));
+  for (const r of runners) {
+    if (!r.name.startsWith('cardinal-') || r.status !== 'offline') continue;
+    if (booting.has(r.name) || freshJobs.has(r.name.replace(/-r[0-9a-z]+$/, ''))) continue;
+    await deps.deleteRunner(installationId, owner, repo, r.id).catch(() => {});
+    removed++;
   }
   return { dispatched, removed };
 }
@@ -262,11 +278,18 @@ function covers(runner: RepoRunner, jobLabels: string[]): boolean {
   return runnerLabels(jobLabels).every((l) => have.has(l.toLowerCase()));
 }
 
-async function dispatchJob(deps: Deps, installationId: number, owner: string, repo: string, job: Pick<JobSummary, 'id' | 'name' | 'labels' | 'created_at'>) {
+async function dispatchJob(
+  deps: Deps,
+  installationId: number,
+  owner: string,
+  repo: string,
+  job: Pick<JobSummary, 'id' | 'name' | 'labels' | 'created_at'>,
+  runnerName = `cardinal-${job.id}`,
+) {
   // JIT runners take any queued job with matching labels, so the runner may end up running a
   // sibling job. The name just has to be unique; it's also the sandbox name.
   await startRunner(deps, installationId, owner, repo, {
-    runnerName: `cardinal-${job.id}`,
+    runnerName,
     jobName: job.name,
     labels: job.labels,
     idleTimeoutSec,
