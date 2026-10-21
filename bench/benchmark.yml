@@ -1,0 +1,42 @@
+# Cardinal vs GitHub-hosted runner benchmark.
+# Copy to .github/workflows/benchmark.yml in a repo with the Cardinal App installed,
+# dispatch it a few times, then summarize with: node bench/collect.ts --repo owner/name
+name: benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: JSON list of runs-on labels to compare
+        default: '["ubuntu-latest","cardinal","cardinal-4x"]'
+
+jobs:
+  bench:
+    name: ${{ matrix.task }} @ ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.runners) }}
+        task: [cpu, next-build, express-test]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: info
+        run: echo "$(nproc) vCPU, $(free -g | awk '/Mem:/{print $2}') GB, $(node --version), $(uname -m)"
+
+      - name: workload
+        if: matrix.task == 'cpu'
+        run: |
+          curl -fsSL -o cpu.mjs https://raw.githubusercontent.com/pango07/cardinal/main/bench/cpu.mjs
+          node cpu.mjs single 10000000
+          node cpu.mjs multi 10000000
+
+      - name: workload
+        if: matrix.task == 'next-build'
+        run: |
+          npx --yes create-next-app@16.4.2 app --yes --use-npm --disable-git
+          cd app && npm run build
+
+      - name: workload
+        if: matrix.task == 'express-test'
+        run: |
+          git clone --depth 1 --branch v5.1.0 https://github.com/expressjs/express.git
+          cd express && npm install --no-audit --no-fund && npm test
