@@ -6,7 +6,7 @@ const ENTRYPOINT = '/home/runner/entrypoint.sh';
 export const vercelSandboxDriver: RunnerDriver = {
   name: 'vercel-sandbox',
 
-  async runOneJob({ jitConfig, size, runnerName, idleTimeoutSec, watchMs }: RunOneJobInput) {
+  async runOneJob({ jitConfig, size, runnerName, idleTimeoutSec, watchMs, tags }: RunOneJobInput) {
     const started = Date.now();
     const sandbox = await Sandbox.create({
       // The sandbox name doubles as the handle `stop()` uses when workflow_job.completed arrives.
@@ -16,7 +16,7 @@ export const vercelSandboxDriver: RunnerDriver = {
       timeout: size.timeoutMs,
       persistent: false,
       networkPolicy: 'allow-all',
-      tags: { app: 'cardinal' },
+      tags: { app: 'cardinal', ...tags },
       ...(process.env.CARDINAL_REGION ? { region: process.env.CARDINAL_REGION as never } : {}),
     });
     const bootMs = Date.now() - started;
@@ -29,7 +29,7 @@ export const vercelSandboxDriver: RunnerDriver = {
       const cmd = await sandbox.runCommand({
         cmd: 'bash',
         args: [ENTRYPOINT],
-        env: { CARDINAL_JIT_CONFIG: jitConfig, CARDINAL_IDLE_TIMEOUT: String(idleTimeoutSec) },
+        env: { CARDINAL_JIT_CONFIG: await jitConfig, CARDINAL_IDLE_TIMEOUT: String(idleTimeoutSec) },
         detached: true,
       });
       void streamLogs(cmd, runnerName, watching.signal);

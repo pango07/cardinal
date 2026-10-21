@@ -7,12 +7,15 @@ export interface RunnerSize {
 }
 
 export interface RunOneJobInput {
-  jitConfig: string;
+  /** May still be in flight: drivers create the VM first and await this before starting the runner. */
+  jitConfig: string | Promise<string>;
   size: RunnerSize;
   jobId: number;
   runnerName: string;
   /** Seconds the runner waits for a job before shutting itself down. */
   idleTimeoutSec: number;
+  /** Extra tags for the compute (driver-dependent, best effort). */
+  tags?: Record<string, string>;
   /**
    * How long the caller can stay alive to babysit the job. If the job outlives this,
    * runOneJob returns with `handedOff: true` and the compute is left running; the
