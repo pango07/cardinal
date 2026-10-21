@@ -49,6 +49,8 @@ Caveat: `actions/checkout` runs `git clean -ffdx` by default, which deletes igno
 
 - **Image size: 378 MB** (`docker image inspect`, linux/amd64, actions/runner 2.338.0, Node 22.23). Target was < 600 MB.
 - Runner version and libraries verified in-container: `Runner.Listener --version` works and `.NET` loads ICU/OpenSSL.
+- **A JIT runner is "offline" until it connects** (about 1.5 s after the sandbox boots, 2026-10-21). The minute sweep once deleted a registration in that window; GitHub then refused the runner's session ("registration has been deleted") and the job sat queued. The sweep now skips offline runners whose compute is still running or whose job was queued less than 45 s ago, re-dispatches under a fresh name (`cardinal-<job>-r<stamp>`) so a kept sandbox can't block it, and keeps going when one dispatch fails.
+- **Cost on a heavy day (2026-10-20, 104 sandboxes): $2.28.** CPU $0.88, memory $0.67, egress $0.51, registry $0.12. CPUs were busy 38% of the provisioned wall-clock; memory bills for all of it. The same vCPU-hours at GitHub's 2026 list price would be about $2.84. Egress was `actions/cache` uploads, now turned off for Cardinal jobs; Android moved to 4 vCPU.
 
 ## Beyond the brief
 
