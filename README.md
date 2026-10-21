@@ -31,6 +31,26 @@ workflow_job.completed ─────► stop sandbox by runner name ───�
 
 Runners register with **JIT configs**: single-use, and they deregister themselves. Auth is a **GitHub App**, not a PAT.
 
+## What runs on it
+
+| Workload | Label | Verified |
+|---|---|---|
+| Node, Python, Go, Rust, anything apt-installable | `cardinal`, `cardinal-4x`, `cardinal-8x` | `next build`, `npm test`, turbo typecheck on a real monorepo |
+| **Android**: Gradle, AGP 9, Kotlin, lint, Robolectric unit tests | `cardinal-android` | Full app build + lint + 721 Robolectric tests in ~4.5 min, 8 vCPU |
+| **macOS / iOS**: Xcode 26.4.1, simulators, `xcodebuild test`, Roborazzi screenshots | `cardinal-macos` (needs your own Apple Silicon host, see [mac/](mac/)) | 178 Roborazzi screenshots verified; `xcodebuild test` on iPhone 17 Pro + iPad Pro simulators |
+
+Android jobs need nothing from `setup-java` or an SDK install step: JDK 21 and the SDK (API 36/37, build-tools 36.1) are in the image, `JAVA_HOME`/`ANDROID_HOME` preset, licenses accepted. `gradle/actions/setup-gradle` works as usual.
+
+```yaml
+jobs:
+  android:
+    runs-on: cardinal-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
 ## Labels
 
 | Label | Where | vCPU | Memory | Extras |
