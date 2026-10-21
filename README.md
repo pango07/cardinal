@@ -2,125 +2,144 @@
   <img src="assets/cardinal-logo.png" alt="Cardinal" width="520">
 </p>
 
-<p align="center"><strong>Bring-your-own-compute GitHub Actions runners. Ephemeral, billed per second, zero GitHub minutes.</strong></p>
+<p align="center"><strong>GitHub Actions runners that exist only while your job runs.</strong></p>
 
-A job is queued, a Firecracker microVM boots from a pre-baked image, the runner inside claims one job, runs it and exits, and the VM is destroyed. You pay for the seconds the job ran. Nothing sits idle.
+<p align="center">
+  Change one line in a workflow. Each job boots a fresh microVM in about a second, runs, and is destroyed.<br>
+  No runners to host, nothing idling, zero GitHub-hosted minutes.
+</p>
 
 ```yaml
 jobs:
   build:
-    runs-on: cardinal        # cardinal-4x, cardinal-8x for more vCPUs
+    runs-on: cardinal      # that's the whole migration
 ```
 
-Linux jobs run on [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) microVMs. macOS jobs (iOS builds, Xcode tests) run on ephemeral [Tart](https://github.com/cirruslabs/tart) VMs on an Apple Silicon Mac you own, via [`mac/`](mac/). Other targets plug in as drivers.
+---
+
+## Why
+
+Every GitHub Actions job runs on a machine you pay for one of three ways:
+
+- **GitHub-hosted runners**: easy, metered by the minute, rounded up, and capped by free-minute quotas. When billing hiccups, CI stops.
+- **Self-hosted VMs**: cheap per minute but always on, always patched by you, and idle most of the day.
+- **Kubernetes runners (ARC) or EC2 autoscalers**: elastic, and also a second infrastructure project to own.
+
+Cardinal is the fourth option: treat a runner like a function call. A `workflow_job.queued` webhook arrives, a microVM is created from a pre-baked image, the Actions runner inside claims **that one job**, runs it, exits, and the VM is gone. You pay for the seconds it ran. There is nothing to patch, scale, or wake up.
 
 ## How it works
 
 ```
-GitHub                        Vercel Function (/api/webhook)          Vercel Sandbox
-workflow_job.queued  ───────► verify HMAC, label ∈ {cardinal, …}
-                              202 to GitHub, then in waitUntil:
-                                generate-jitconfig (GitHub App) ───►
-                                Sandbox.create(cardinal-runner) ────► microVM boots
-                                runCommand(entrypoint.sh, detached) ► runner claims one job, runs it, exits
-                                watch until exit (≤ ~12.5 min) ──────  sandbox.stop()
-workflow_job.completed ─────► stop sandbox by runner name ─────────► (long jobs)
+   GitHub                    Cardinal dispatcher                Compute
+   ──────                    (one Vercel Function)              ───────
+   job queued ──webhook──►   verify signature
+   runs-on: cardinal         mint a single-use runner token
+                             create a microVM from the image ──►  boots (~0.7 s)
+                             ◄── 202 OK (GitHub sees ~0.5 s)      runner starts, claims the job
+                             watch it, stream logs                job runs
+                             stop the VM when the runner exits    VM destroyed
 ```
 
-- [`image/`](image/): Ubuntu 24.04, actions/runner (SHA-verified), Node 22. About 380 MB.
-- [`dispatcher/`](dispatcher/): Next.js app on Vercel. One webhook route and one driver.
-- [`dispatcher/lib/drivers/`](dispatcher/lib/drivers/): the `RunnerDriver` interface and the Vercel Sandbox driver.
+Four properties fall out of that:
 
-Runners register with **JIT configs**: single-use, and they deregister themselves. Auth is a **GitHub App**, not a PAT.
+| | |
+|---|---|
+| **One job, one VM** | Every job gets a clean machine. No leftover state, no shared disk, no noisy neighbour. |
+| **Single-use credentials** | Runners register with GitHub's JIT config: valid for one job, then they deregister themselves. Nothing to rotate or clean up. |
+| **Pay for seconds** | Vercel Sandbox bills active CPU and memory per second. A 10-minute build on 2 vCPU costs about **2.5 ¢**. A queue that's empty all night costs nothing. |
+| **Nothing to run** | The dispatcher is a Next.js route on Vercel. The images live in Vercel Container Registry. You never SSH into anything. |
+
+Measured, not estimated: GitHub queue → runner listening in **3 s**, sandbox create in **0.6–1.0 s**, teardown within **1 s** of the runner exiting, and a `next build` job that runs **24% faster** than on GitHub's 4 vCPU runner ([benchmarks](bench/RESULTS.md)).
 
 ## What runs on it
 
-| Workload | Label | Verified |
+| Workload | Label | What's in the box |
 |---|---|---|
-| Node, Python, Go, Rust, anything apt-installable | `cardinal`, `cardinal-4x`, `cardinal-8x` | `next build`, `npm test`, turbo typecheck on a real monorepo |
-| **Android**: Gradle, AGP 9, Kotlin, lint, Robolectric unit tests | `cardinal-android` | Full app build + lint + 721 Robolectric tests in ~4.5 min, 8 vCPU |
-| **macOS / iOS**: Xcode 26.4.1, simulators, `xcodebuild test`, Roborazzi screenshots | `cardinal-macos` (needs your own Apple Silicon host, see [mac/](mac/)) | 178 Roborazzi screenshots verified; `xcodebuild test` on iPhone 17 Pro + iPad Pro simulators |
+| Node, Python, Go, Rust, anything `apt` can install | `cardinal` · `cardinal-4x` · `cardinal-8x` | Ubuntu 24.04, Node 22, git, jq. 2 / 4 / 8 vCPU with 2 GB per vCPU |
+| **Android** | `cardinal-android` | Everything above plus Temurin JDK 21 and the Android SDK (API 36/37, build-tools 36.1). 8 vCPU / 16 GB. No `setup-java`, no license step |
+| **macOS, iOS, Xcode** | `cardinal-macos` | macOS 26 with Xcode 26.4.1 and iOS simulators, in a fresh Tart VM on an Apple Silicon host you own. See [mac/](mac/) |
 
-Android jobs need nothing from `setup-java` or an SDK install step: JDK 21 and the SDK (API 36/37, build-tools 36.1) are in the image, `JAVA_HOME`/`ANDROID_HOME` preset, licenses accepted. `gradle/actions/setup-gradle` works as usual.
+Everything in that table is verified on real projects: a Turborepo monorepo typecheck + test, a full Android app build with lint and 721 Robolectric tests (~4.5 min), 178 Roborazzi screenshot comparisons, and `xcodebuild test` on iPhone and iPad simulators.
 
-```yaml
-jobs:
-  android:
-    runs-on: cardinal-android
-    steps:
-      - uses: actions/checkout@v4
-      - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+## Get running
+
+About 30 minutes, on a Vercel Pro account. [docs/SETUP.md](docs/SETUP.md) walks through it; the shape is:
+
+```bash
+cd dispatcher && npm install && vercel link        # 1. one Vercel project holds the dispatcher, images and sandboxes
+../image/push.sh v0.1                               # 2. build + push the runner image (~380 MB)
+vercel deploy --prod                                # 3. deploy the webhook
+npm run create-app -- --url https://<your-domain>   # 4. one click creates the GitHub App and stores its keys in Vercel
 ```
 
-## Labels
-
-| Label | Where | vCPU | Memory | Extras |
-|---|---|---|---|---|
-| `cardinal` | Vercel Sandbox | 2 | 4 GB | Ubuntu 24.04, Node 22, git, jq |
-| `cardinal-4x` | Vercel Sandbox | 4 | 8 GB | same |
-| `cardinal-8x` | Vercel Sandbox | 8 | 16 GB | same |
-| `cardinal-android` | Vercel Sandbox | 8 | 16 GB | + JDK 21, Android SDK (API 36/37, build-tools 36.1) |
-| `cardinal-macos` | Tart VM on your Mac | 8 | 16 GB | macOS 26, Xcode 26.4.1, simulators, + JDK 21, Android SDK |
-
-## Known limits
-
-- **No Docker.** There's no nested virtualization in the sandbox. `container:`, `services:` and Docker-based actions fail. Most Node, Python, Go and Rust jobs never need Docker.
-- **Max job length** = sandbox timeout. 60 min by default; Pro allows 24h.
-- **Concurrency** = your Vercel plan quota (Pro: 10,000 sandboxes; the vCPU allocation rate ramps from 150/min).
-- **macOS needs a Mac.** `cardinal-macos` jobs run on your own Apple Silicon machine (2 VMs at a time per Mac). See [mac/README.md](mac/README.md).
-- **Public repos:** don't let fork PRs run on Cardinal; it's your compute. See [SECURITY.md](SECURITY.md).
-
-Details: [docs/LIMITS.md](docs/LIMITS.md).
-
-## Cost
-
-At iad1 Pro rates, a 10-minute job on 2 vCPU / 4 GB at 50% CPU costs about **$0.025**: $0.011 active CPU plus $0.014 memory. GitHub charges $0.08 for the same 10 minutes once you're past free minutes. Active CPU only bills while the CPU is actually busy, so time spent waiting on `npm install` downloads is nearly free. Ingress is free. Each job logs its own estimate.
+Then install the App on a repo, put `runs-on: cardinal` in a workflow, and push.
 
 ## Speed
 
-Against a 4 vCPU GitHub-hosted runner ([full results](bench/RESULTS.md), 5 rounds, medians):
+Five rounds against GitHub's 4 vCPU `ubuntu-latest`, medians in seconds ([full results](bench/RESULTS.md)):
 
-| Job | `ubuntu-latest` | `cardinal-4x` |
+| Job | `ubuntu-latest` | `cardinal-4x` | `cardinal` (2 vCPU) |
+|---|---|---|---|
+| `create-next-app` + `next build` | 41 | **31** | 44 |
+| clone + `npm install` + `npm test` (express) | 17 | **13** | 20 |
+| Pure CPU (sha256, single + multi-thread) | **18** | 24 | 28 |
+| Queue → job started | **1** | 4 | 4 |
+
+Install- and build-heavy jobs win on Cardinal (fast network, fast boot). Per-thread CPU is about 60% slower, and pickup adds ~3 s per job. For most CI that trade is a net win; for a single-threaded compile-only job it isn't.
+
+## Cost
+
+Vercel Sandbox, iad1, Pro rates: $0.128 per active-CPU-hour, $0.0212 per GB-hour of memory, nothing for ingress. Active CPU only counts while the CPU is busy, so time spent waiting on `npm install` downloads is nearly free.
+
+| Job | GitHub-hosted (private repo) | Cardinal |
 |---|---|---|
-| `create-next-app` + `next build` | 41 s | **31 s** |
-| clone + `npm install` + `npm test` (express) | 17 s | **13 s** |
-| Pure CPU (sha256, single + multi-thread) | **18 s** | 24 s |
+| 10 min, 2 vCPU, 50% busy | $0.08 | **~$0.025** |
+| 5 min Android build, 8 vCPU | $0.16 (8-core larger runner) | **~$0.015** |
+| A `next build` from the benchmark above | $0.008 (rounded up to 1 min) | **~$0.003** |
+| An empty queue, all month | $0 | $0 |
 
-Install- and network-heavy jobs run faster. Per-thread CPU is about 60% slower, and pickup adds about 3 s per job.
+Usage comes out of the Pro plan's $20/month credit first.
 
-## Why not Vercel Daemons?
+## How it compares
 
-[Vercel Daemons](https://vercel.com/docs/daemons) (public beta) run a fixed number of always-on container instances, and the docs list "self-hosted CI runners" as a use case. It's a good fit for a small, steady pool. Cardinal makes a different trade-off:
+| | Cardinal | GitHub-hosted | Self-hosted VM | ARC (Kubernetes) | RunsOn / EC2 autoscalers | Hosted fast runners (Depot, Blacksmith, …) | Vercel Daemons |
+|---|---|---|---|---|---|---|---|
+| Infra you operate | none | none | a VM | a cluster | a VPC + Lambda/ASG | none | none |
+| Idle cost | **$0** | $0 | always on | cluster | ~$0 | $0 | always on |
+| Fresh VM per job | **yes** | yes | no | pod | yes | yes | no |
+| Setup | ~30 min | 0 | hours | days | hours | minutes | minutes |
+| macOS | your Mac, 2 VMs | yes | if you own one | no | yes (mac instances, 24 h min) | some | no |
+| Price basis | per second | per minute, rounded up | per hour | per node | per second-ish | per minute | per second |
 
-| | Daemons (beta) | Cardinal (Sandbox) |
-|---|---|---|
-| Idle cost | Instances run 24/7. You pay provisioned memory around the clock | **Nothing runs between jobs.** Memory bills only while a job runs |
-| Burst | Fixed instance count, no autoscaling. Pro quota: 16 vCPUs running at once (8 two-vCPU runners) | One sandbox per queued job, up to the plan's sandbox quota (Pro: 10,000) |
-| Biggest machine | 4 vCPU / 8 GB | 8 vCPU / 16 GB on Pro (32 vCPU on Enterprise) |
-| Isolation between jobs | Instances restart in place; disk is ephemeral, but jobs share an instance's lifetime | **Fresh Firecracker microVM per job**, destroyed afterwards |
-| Pickup latency | ~0: the runner is already listening | ~3–4 s from queue to running (measured) |
-| Job length | Unbounded | Sandbox timeout (Pro: 24h) |
+Cardinal is not a new idea; ephemeral-VM-per-job is what RunsOn and the hosted services do. It's the version with nothing to host, on a compute primitive that boots in a second and bills by the second. If you want zero-latency pickup for a handful of steady jobs, a warm pool (Daemons) is a better fit. If your CI is bursty and idle most of the day, per-job sandboxes are cheaper and cleaner.
 
-If you want zero-latency pickup for a handful of steady jobs, a Daemons-backed warm pool is a reasonable future driver. For bursty CI that sits idle most of the day, per-job sandboxes are cheaper and isolate better.
+## Limits
 
-## Get started
+- **No Docker inside jobs.** The sandbox is a microVM without nested virtualization. `container:`, `services:` and Docker-based actions don't work. Most Node/Python/Go/Rust/Android jobs never need it.
+- **Job length** is capped by the sandbox timeout: 60 min by default, up to 24 h on Pro.
+- **Concurrency** is your Vercel plan's sandbox quota (Pro: 10,000).
+- **macOS needs a Mac.** Apple only lets macOS run on Apple hardware, so `cardinal-macos` uses a small agent on your own Apple Silicon machine (laptop, Mac mini, or rented), two VMs at a time.
+- **Linux is amd64 only** for now.
+- **Public repos:** don't let fork pull requests run on your compute. See [SECURITY.md](SECURITY.md).
 
-[docs/SETUP.md](docs/SETUP.md): Vercel project, image push, GitHub App, deploy, first green job.
+Details in [docs/LIMITS.md](docs/LIMITS.md).
+
+## What's in the repo
+
+```
+image/        Dockerfile for the runner images (base + android stage), push script
+dispatcher/   Next.js app on Vercel: the webhook, GitHub App auth, the Vercel Sandbox driver
+mac/          cardinal-mac: the macOS driver (Tart VMs on Apple Silicon)
+bench/        benchmark workflow, CPU workload, results collector, RESULTS.md
+docs/         SETUP.md, LIMITS.md, FINDINGS.md (every measurement and gotcha so far)
+examples/     a workflow that runs on: cardinal
+```
+
+The driver interface is ~20 lines ([dispatcher/lib/drivers/types.ts](dispatcher/lib/drivers/types.ts)): boot compute from the image, run one job, tear down. Fargate, Fly, Hetzner or anything else with an API can slot in without touching the webhook.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Measurements for the open questions in [docs/FINDINGS.md](docs/FINDINGS.md) are especially welcome.
-
-## Develop
-
-```bash
-cd dispatcher
-npm install
-npm test            # unit tests
-npm run typecheck
-npm run smoke -- --repo you/repo   # boot one real sandbox with a JIT config (see SETUP.md)
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md). Measurements are especially welcome: [docs/FINDINGS.md](docs/FINDINGS.md) lists what's been measured and what hasn't (arm64, snapshot boots, drive-backed caches).
 
 ## License
 
