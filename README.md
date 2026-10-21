@@ -104,14 +104,14 @@ Measured on a real day of use (88 jobs, including ten full Android builds and 45
 
 | Job | GitHub-hosted (private repo) | Cardinal |
 |---|---|---|
-| 30 s test run | $0.008 (rounded up to a minute) | **~$0.002** |
-| 10 min, 2 vCPU, 50% busy | $0.08 | **~$0.025** |
-| 7 min Android build, 8 vCPU, cache upload | $0.16 (8-core larger runner) | ~$0.12 |
+| 30 s test run | $0.006 (rounded up to a minute) | **~$0.002** |
+| 10 min, 2 vCPU, 50% busy | $0.06 | **~$0.025** |
+| 7 min Android build, 8 vCPU, cache upload | $0.17 (8-core larger runner) | ~$0.12 |
 | An empty queue, all month | $0 | $0 |
 
-Short and bursty jobs are several times cheaper. Long, CPU-bound jobs on big VMs cost about the same as GitHub's larger runners, because a busy CPU-second costs what it costs. What you don't pay for is idle time, minute rounding, or the queue.
+GitHub rates are the 2026 list prices for private repos ($0.006/min for 2 cores, scaling with cores). Short and bursty jobs are several times cheaper on Cardinal. Long, CPU-bound jobs on big VMs cost about the same as GitHub's larger runners, because a busy CPU-second costs what it costs. What you don't pay for is idle time, minute rounding, or the queue.
 
-Usage comes out of the Pro plan's $20/month credit first.
+Two things make GitHub-hosted *free* and Cardinal not: public repos, and the 2,000–3,000 included minutes per month on private repos (standard runners only; larger runners are always paid). If you're inside those, Cardinal is a speed-and-control choice, not a cost one. Usage comes out of the Pro plan's $20/month credit first.
 
 ## How it compares
 
