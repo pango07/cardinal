@@ -31,37 +31,41 @@ The image lands at `vcr.vercel.com/<team-slug>/<project>/cardinal-runner:<tag>`.
 ## 3. Deploy the dispatcher
 
 ```bash
+vercel env add CARDINAL_IMAGE production     # cardinal-runner:v0.1
 vercel deploy --prod
 ```
 
-Note the production URL, e.g. `https://cardinal-yourteam.vercel.app`. The webhook must hit the **production** domain: preview URLs sit behind Vercel Deployment Protection and GitHub would get a 401.
+Find the production domain with `vercel inspect <deployment-url>` under **Aliases**. Use the short one (`https://<project>-<random>.vercel.app` or your custom domain). The `…-<team-slug>.vercel.app` alias and preview URLs are behind Vercel Deployment Protection, so GitHub would get a redirect to a login page.
 
 ## 4. Create the GitHub App
 
-Open this link, with `WEBHOOK_URL` replaced by your production URL + `/api/webhook`. It pre-fills the App with the right permissions and events:
-
+```bash
+npm run create-app -- --url https://<your-production-domain>
+# org-owned App: add --org <org>.  App names are global; pick one with --name <name>
 ```
-https://github.com/settings/apps/new?name=cardinal-runner&url=https://github.com&webhook_active=true&webhook_url=WEBHOOK_URL&actions=read&administration=write&metadata=read&events[]=workflow_job
-```
 
-(For an org-owned App use `https://github.com/organizations/ORG/settings/apps/new?...` with the same query.)
+This opens your browser on a pre-filled "Create GitHub App" page (GitHub's [manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest)). Click **Create**, and the script:
 
-Then, on the form:
+- receives the App ID, private key and webhook secret on a localhost callback
+- stores them as `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` and `GITHUB_WEBHOOK_SECRET` production env vars in the linked Vercel project. Nothing is printed or written to disk
+- sends you to the App's install page. Install it on **only** the repos that should run on Cardinal
 
-1. **Webhook secret**: generate one (`openssl rand -hex 32`) and paste it. Keep it for step 5.
-2. Check the permissions are **Actions: Read**, **Administration: Read & write**, **Metadata: Read**. Administration is what lets the App mint JIT runner configs.
-3. Check **Workflow job** is the only subscribed event.
-4. "Where can this App be installed": your choice.
-5. Create it. Note the **App ID**, then **Generate a private key** (downloads a `.pem`).
-6. **Install App** → pick the repos that should run on Cardinal.
+The App gets **Actions: Read**, **Administration: Read & write** (what lets it mint JIT runner configs) and **Metadata: Read**, and subscribes to **Workflow job** events.
 
-## 5. Set environment variables
+<details><summary>Doing it by hand instead</summary>
+
+Create an App at https://github.com/settings/apps/new with webhook URL `https://<domain>/api/webhook`, a random webhook secret (`openssl rand -hex 32`), the permissions and event above. Then generate a private key and set the three env vars:
 
 ```bash
-vercel env add GITHUB_APP_ID production            # the App ID
-vercel env add GITHUB_APP_PRIVATE_KEY production < ~/Downloads/cardinal-runner.*.private-key.pem
-vercel env add GITHUB_WEBHOOK_SECRET production    # the secret from step 4
-vercel env add CARDINAL_IMAGE production           # cardinal-runner:v0.1
+vercel env add GITHUB_APP_ID production
+vercel env add GITHUB_APP_PRIVATE_KEY production < path/to/key.pem
+vercel env add GITHUB_WEBHOOK_SECRET production
+```
+</details>
+
+## 5. Redeploy
+
+```bash
 vercel deploy --prod                               # env changes need a redeploy
 ```
 

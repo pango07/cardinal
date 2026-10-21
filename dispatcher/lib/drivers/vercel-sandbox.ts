@@ -25,12 +25,11 @@ export const vercelSandboxDriver: RunnerDriver = {
     let handedOff = false;
     const watching = new AbortController();
     try {
-      // Root so we don't depend on the image's default user; entrypoint.sh drops to `runner`.
+      // Runs as the image's USER (`runner`). Not sudo: sudo would strip the env carrying the JIT config.
       const cmd = await sandbox.runCommand({
         cmd: 'bash',
         args: [ENTRYPOINT],
         env: { CARDINAL_JIT_CONFIG: jitConfig, CARDINAL_IDLE_TIMEOUT: String(idleTimeoutSec) },
-        sudo: true,
         detached: true,
       });
       void streamLogs(cmd, runnerName, watching.signal);

@@ -47,7 +47,6 @@ try {
     cmd: 'bash',
     args: ['/home/runner/entrypoint.sh'],
     env: { CARDINAL_JIT_CONFIG: jit },
-    sudo: true,
     detached: true,
   });
   let listening: number | undefined;

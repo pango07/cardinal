@@ -9,8 +9,8 @@
 #                            otherwise sit idle until the sandbox timeout.
 set -euo pipefail
 
-# The dispatcher runs us as root (sudo) so we don't depend on the sandbox's default user;
-# drop to `runner` so jobs see the same uid/sudo setup as a GitHub-hosted runner.
+# Sandbox runs commands as the image's USER (runner). If started as root anyway (e.g. `docker run
+# --user root`), drop to `runner` so jobs see the same uid/sudo setup as a GitHub-hosted runner.
 if [[ "$(id -u)" == "0" ]]; then
   exec runuser -u runner -- env HOME=/home/runner USER=runner \
     CARDINAL_JIT_CONFIG="${CARDINAL_JIT_CONFIG:-}" \
@@ -21,6 +21,10 @@ fi
 : "${CARDINAL_JIT_CONFIG:?missing JIT config}"
 idle_timeout="${CARDINAL_IDLE_TIMEOUT:-300}"
 cd /home/runner
+
+# The VM's hostname isn't in /etc/hosts, which makes every `sudo` in a job warn "unable to resolve host".
+grep -q "$(hostname)" /etc/hosts 2>/dev/null \
+  || echo "127.0.0.1 $(hostname)" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
 
 ts() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
 echo "cardinal: runner v$(cat .runner-version) starting at $(ts)"
