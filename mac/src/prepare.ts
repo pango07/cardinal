@@ -49,6 +49,10 @@ export async function prepare(opts: { force?: boolean } = {}): Promise<void> {
     await run('scp', ['-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-i', sshKeyPath, tarball, `${config.guestUser}@${ip}:/tmp/runner.tar.gz`]);
     await ssh(ip, 'rm -rf ~/actions-runner && mkdir -p ~/actions-runner && tar -xzf /tmp/runner.tar.gz -C ~/actions-runner && rm /tmp/runner.tar.gz');
     await ssh(ip, `echo ${rel.version} > ~/actions-runner/.runner-version`);
+    // The runner is started over non-interactive SSH, which has a bare PATH; the runner prepends .path for every job.
+    await ssh(ip, `echo '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' > ~/actions-runner/.path`);
+    log('prepare', 'installing xcodegen');
+    await ssh(ip, 'export PATH=/opt/homebrew/bin:$PATH; brew install --quiet xcodegen', 20 * 60_000);
 
     if (config.android) {
       log('prepare', 'installing JDK 21 + Android SDK (Homebrew, inside the VM)');
