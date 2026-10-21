@@ -38,7 +38,12 @@ node src/main.ts prepare          # pulls the image (once, slow), boots it, inst
 node src/main.ts run --repo you/app --repo you/other-app
 ```
 
-Leave `run` running (a `launchd` agent or a `tmux` window). It sweeps leftover VMs at startup, and Ctrl-C waits for in-flight jobs.
+Leave `run` running. It sweeps leftover VMs at startup, and Ctrl-C waits for in-flight jobs. To make it a service that starts at login, restarts on failure and keeps the Mac awake while on power:
+
+```bash
+mac/install-service.sh you/app you/other-app     # launchd user agent; logs in ~/Library/Logs/cardinal-mac/
+mac/install-service.sh --uninstall
+```
 
 ## Configuration
 
@@ -65,4 +70,8 @@ Jobs run as `admin` inside a VM with no access to the host filesystem. The host'
 
 - 2 concurrent jobs per Mac. Run the agent on more Macs for more.
 - VM boot to runner listening is about 20–30 s, slower than the Linux driver's 3 s.
-- The Mac must be awake. `caffeinate -s node src/main.ts run …` keeps it so while on power.
+- The Mac must be awake. The service wraps the agent in `caffeinate -s`, which prevents sleep while on AC power.
+
+## Hosting it somewhere other than your laptop
+
+The agent runs the same on any Apple Silicon macOS: a Mac mini on a shelf, or rented hardware (Scaleway Apple Silicon, AWS EC2 Mac, MacStadium). Install Tart, `node`, `gh` (or set `GITHUB_TOKEN`), clone this repo, `prepare`, `install-service.sh`. Two VMs per host; add hosts for more.
