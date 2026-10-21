@@ -5,7 +5,7 @@
 1. Click **Deploy with Vercel** in the README. It creates a project from this repo with `dispatcher/` as the root.
 2. Open `https://<your-deployment>/setup`, click **Create the GitHub App**, and copy the three values GitHub hands back.
 3. In Vercel → Settings → Environment Variables (Production) add `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`. Optionally `CRON_SECRET` (any random string) to lock `/api/sweep` to Vercel's cron. Redeploy.
-4. Install the App on your repos. Done: `runs-on: cardinal`, `cardinal-4x`, `cardinal-8x`, `cardinal-android` all work, booting the public images `jvaught01s-projects/cardinal/cardinal-runner:v0.3` and `…/cardinal-runner-android:v0.4`.
+4. Install the App on your repos. Done: `runs-on: cardinal`, `cardinal-1x`, `cardinal-4x`, `cardinal-8x`, `cardinal-auto`, `cardinal-android` all work, booting the public images `jvaught01s-projects/cardinal/cardinal-runner:v0.3` and `…/cardinal-runner-android:v0.4`.
 
 The rest of this page is the long way: your own images, the CLI, and the macOS host.
 

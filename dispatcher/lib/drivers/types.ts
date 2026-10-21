@@ -4,6 +4,8 @@ export interface RunnerSize {
   timeoutMs: number;
   /** Image to boot instead of the default runner image (e.g. the android variant). */
   image?: string;
+  /** vcpus/memoryMb are a starting point; the dispatcher resizes from measured utilisation. */
+  auto?: boolean;
 }
 
 export interface RunOneJobInput {

@@ -293,3 +293,49 @@ describe('sweepSandboxes', () => {
     expect(r.removed.sort()).toEqual(['legacy', 'old-fail', 'opened', 'undecided-old']);
   });
 });
+
+describe('cardinal-auto', () => {
+  const measured = (vcpus: number, util: number) => ({ exitCode: 0, handedOff: false, bootMs: 1000, durationMs: 10_000, activeCpuMs: util * vcpus * 10_000 });
+
+  it('starts at 2 vCPU with no base and leaves a recommendation on the run', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d);
+    d.driver.runOneJob.mockResolvedValue(measured(2, 0.25));
+    await run(plan(event({ labels: ['cardinal-auto'] }), d));
+    expect(d.driver.runOneJob.mock.calls[0][0].size).toMatchObject({ vcpus: 2, memoryMb: 4096 });
+    expect(snaps.setTags).toHaveBeenCalledWith('cardinal-42', { fit: '1:2:1' });
+  });
+
+  it('boots at the size the base recommends, forks it, and carries the floor forward', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d, [{ name: 'cardinal-1', tags: { warm: KEY, role: 'base', img: IMG, fit: '4:2:2' } }]);
+    d.driver.runOneJob.mockResolvedValue(measured(4, 0.1));
+    await run(plan(event({ labels: ['cardinal-auto'] }), d));
+    const input = d.driver.runOneJob.mock.calls[0][0];
+    expect(input.size).toMatchObject({ vcpus: 4, memoryMb: 8192 });
+    expect(input.persist.forkFrom).toBe('cardinal-1');
+    expect(snaps.setTags).toHaveBeenCalledWith('cardinal-42', { fit: '2:4:2' });
+  });
+
+  it('steps up when the CPUs were pegged', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d, [{ name: 'cardinal-1', tags: { warm: KEY, role: 'base', img: IMG, fit: '2:2:1' } }]);
+    d.driver.runOneJob.mockResolvedValue(measured(2, 0.95));
+    await run(plan(event({ labels: ['cardinal-auto'] }), d));
+    expect(snaps.setTags).toHaveBeenCalledWith('cardinal-42', { fit: '4:2:1' });
+  });
+
+  it('a failure after a step-down puts the base back up and floors it there', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d, [{ name: 'cardinal-1', tags: { warm: KEY, role: 'base', img: IMG, fit: '1:2:1' } }]);
+    await run(plan(event({ labels: ['cardinal-auto'], runner_name: 'cardinal-42', conclusion: 'failure' }, 'completed'), d));
+    expect(snaps.setTags).toHaveBeenCalledWith('cardinal-1', { fit: '2:2:2' });
+  });
+
+  it('a failure at a steady size changes nothing', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d, [{ name: 'cardinal-1', tags: { warm: KEY, role: 'base', img: IMG, fit: '2:2:1' } }]);
+    await run(plan(event({ labels: ['cardinal-auto'], runner_name: 'cardinal-42', conclusion: 'failure' }, 'completed'), d));
+    expect(snaps.setTags).not.toHaveBeenCalledWith('cardinal-1', expect.anything());
+  });
+});

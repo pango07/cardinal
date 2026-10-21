@@ -12,9 +12,12 @@ const timeoutMs = Number(process.env.CARDINAL_TIMEOUT_MINUTES ?? 60) * 60_000;
 
 // Sandbox memory is fixed at 2048 MB per vCPU; memoryMb is informational (cost estimates).
 export const SIZES: Record<string, RunnerSize> = {
+  'cardinal-1x': { vcpus: 1, memoryMb: 2048,  timeoutMs },
   'cardinal':    { vcpus: 2, memoryMb: 4096,  timeoutMs },
   'cardinal-4x': { vcpus: 4, memoryMb: 8192,  timeoutMs },
   'cardinal-8x': { vcpus: 8, memoryMb: 16384, timeoutMs },
+  // Sized from the job's own measured CPU utilisation (lib/autosize.ts); starts at 2 vCPU.
+  'cardinal-auto': { vcpus: 2, memoryMb: 4096, timeoutMs, auto: true },
   // JDK 21 + Android SDK baked in (image/Dockerfile, `android` stage). Gradle + Kotlin want the memory.
   'cardinal-android': { vcpus: 4, memoryMb: 8192, timeoutMs, image: process.env.CARDINAL_IMAGE_ANDROID || PUBLIC_IMAGES.android },
 };

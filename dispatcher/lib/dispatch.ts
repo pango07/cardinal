@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
+import { formatFit, lockAfterFailure, nextFit, parseFit, utilisation } from './autosize';
 import { cardinalLabel, defaultImage, idleTimeoutSec, runnerLabels, sizeForLabels } from './config';
 import { estimateCost } from './cost';
-import type { RunnerDriver, RunnerSize } from './drivers/types';
+import type { RunnerDriver, RunnerSize, SandboxInfo } from './drivers/types';
 import {
   GitHubError,
   type JobSummary,
@@ -104,6 +105,16 @@ export function plan(event: WorkflowJobEvent, deps: Deps): Plan {
           // Kept (until the snapshot TTL) so the failure can be opened and poked at.
           await snaps.setTags(runnerName, { role: 'failed' }).catch(() => {});
           console.log('cardinal kept failed job sandbox', { runnerName, conclusion: job.conclusion });
+          const size = sizeForLabels(job.labels);
+          if (size.auto) {
+            // If this run was a step-down, assume the smaller box was the problem: go back up and floor there.
+            const base = await findWarmBase(deps, key, size);
+            const locked = base && lockAfterFailure(parseFit(base.tags.fit) ?? { rec: size.vcpus, from: size.vcpus, floor: 1 });
+            if (base && locked) {
+              await snaps.setTags(base.name, { fit: formatFit(locked) }).catch(() => {});
+              console.log('cardinal auto-size floored after failure', { job: job.name, base: base.name, fit: formatFit(locked) });
+            }
+          }
         }
       },
     };
@@ -139,13 +150,12 @@ function imageTag(size: RunnerSize): string {
 }
 
 /** The newest green default-branch sandbox for this job, built from the image we'd boot today. */
-async function findWarmBase(deps: Deps, key: string, size: RunnerSize): Promise<string | undefined> {
+async function findWarmBase(deps: Deps, key: string, size: RunnerSize): Promise<SandboxInfo | undefined> {
   const snaps = deps.driver.snapshots;
   if (!snaps || !WARM) return undefined;
   try {
     const img = imageTag(size);
-    const base = (await snaps.listTagged('warm', key)).find((s) => s.tags.role === 'base' && s.status === 'stopped' && s.tags.img === img);
-    return base?.name;
+    return (await snaps.listTagged('warm', key)).find((s) => s.tags.role === 'base' && s.status === 'stopped' && s.tags.img === img);
   } catch (err) {
     console.warn('cardinal warm base lookup failed', { key, err: String(err) });
     return undefined;
@@ -305,10 +315,14 @@ async function startRunner(
   opts: { runnerName: string; jobName: string; labels: string[]; idleTimeoutSec: number; tags?: Record<string, string>; queuedAt: number | undefined },
 ) {
   const { runnerName, labels } = opts;
-  const size = sizeForLabels(labels);
+  let size = sizeForLabels(labels);
   const key = warmKey(owner, repo, opts.jobName);
-  const forkFrom = await findWarmBase(deps, key, size);
+  const base = await findWarmBase(deps, key, size);
+  const forkFrom = base?.name;
   const persist = deps.driver.snapshots && WARM ? { forkFrom } : undefined;
+  // cardinal-auto: boot at the size the last green run of this job recommended.
+  const baseFit = size.auto ? parseFit(base?.tags.fit) : undefined;
+  if (baseFit) size = { ...size, vcpus: baseFit.rec, memoryMb: baseFit.rec * 2048 };
 
   // Mint the token while the VM boots; the driver awaits it before starting the runner.
   const jit = deps
@@ -338,11 +352,22 @@ async function startRunner(
     throw err;
   }
 
+  // Measure this run and leave the recommendation on its sandbox; if it becomes the base, the next run uses it.
+  let fit = baseFit;
+  if (size.auto && !result.handedOff && result.activeCpuMs !== undefined) {
+    fit = nextFit({ vcpus: size.vcpus, activeCpuMs: result.activeCpuMs, wallMs: result.durationMs, floor: baseFit?.floor });
+  }
+  if (size.auto && fit && persist && deps.driver.snapshots) {
+    await deps.driver.snapshots.setTags(runnerName, { fit: formatFit(fit) }).catch((err) => console.warn('cardinal could not tag fit', { runnerName, err: String(err) }));
+  }
+
   const summary = {
     runnerName,
     repo: `${owner}/${repo}`,
     driver: deps.driver.name,
     vcpus: size.vcpus,
+    utilisation: result.handedOff || result.activeCpuMs === undefined ? undefined : Number(utilisation({ vcpus: size.vcpus, activeCpuMs: result.activeCpuMs, wallMs: result.durationMs }).toFixed(2)),
+    nextVcpus: size.auto && fit ? fit.rec : undefined,
     speculative: Boolean(opts.tags?.spec),
     warmStart: result.forkedFrom ?? false,
     queueToBootMs: opts.queuedAt === undefined || Number.isNaN(opts.queuedAt) ? undefined : runStart + result.bootMs - opts.queuedAt,

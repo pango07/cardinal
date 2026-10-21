@@ -13,6 +13,8 @@ describe('label routing', () => {
     expect(sizeForLabels(['cardinal-8x'])).toMatchObject({ vcpus: 8, memoryMb: 16384 });
     expect(cardinalLabel(['self-hosted', 'cardinal-android'])).toBe('cardinal-android');
     expect(sizeForLabels(['cardinal-android']).vcpus).toBe(4);
+    expect(sizeForLabels(['cardinal-1x'])).toMatchObject({ vcpus: 1, memoryMb: 2048 });
+    expect(sizeForLabels(['cardinal-auto'])).toMatchObject({ vcpus: 2, auto: true });
   });
   it('strips implicit self-hosted labels before generate-jitconfig', () => {
     expect(runnerLabels(['self-hosted', 'Linux', 'X64', 'cardinal-4x'])).toEqual(['cardinal-4x']);

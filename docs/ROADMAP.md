@@ -16,12 +16,13 @@ What's shipped, what's next, and the design for the hosted version. Dates are wh
 | One-click install | Deploy button + hosted `/setup`, public images | 2026-10-21 |
 | Driver guide + contract test | add a compute backend in ~150 lines | 2026-10-21 |
 | Agent with Docker backend | `cardinal-docker`: any machine with Docker takes jobs | 2026-10-21 |
+| Auto-sizing (`cardinal-auto`) | each job resizes itself from measured CPU utilisation; `cardinal-1x` for tiny jobs | 2026-10-21 |
 
 ## Next
 
 1. **Install once, fork into shards.** For `strategy.matrix` jobs that share a setup (checkout + install), run the setup once and fork the VM N ways in ~1.4 s each. Needs: detect matrix siblings in the `push` pre-boot (same job name prefix, same labels), run the first to the end of its install steps, snapshot, fork. The runner has no "pause after step k" hook, so the practical version is: the *first* shard's green run becomes the base and the other shards fork it on the *next* push. That already follows from warm starts; the per-push fork is the upgrade.
 2. **`cardinal join` for teams.** The agent already runs Tart (macOS) and Docker. Missing: a `join` subcommand that registers the machine with a hosted dispatcher instead of polling GitHub itself, idle/AC-power detection, and a `linux-firecracker` backend (Firecracker + KVM) for real VM isolation on Linux hosts.
-3. **Receipts.** Per-job cost as a check annotation, and a README badge "CI cost this month: $x". The dispatcher already logs the number.
+3. **Receipts.** Per-job cost and utilisation as a check annotation, and a README badge "CI cost this month: $x". The dispatcher already logs both numbers.
 4. **Micro-runner.** actions/runner is 150 MB of .NET that takes 1.8 s to start. A Go/Rust implementation of just the job protocol (there's prior art in `github-act-runner`) would cut the image to ~30 MB and boot-to-listening to well under a second.
 5. **arm64 Linux**, snapshot-vs-image boot comparison, drive-backed shared caches: measurements the brief asked for and nobody has taken yet.
 
