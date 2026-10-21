@@ -22,6 +22,11 @@ export interface RunOneJobInput {
    * `workflow_job.completed` webhook (via `stop`) or the compute timeout tears it down.
    */
   watchMs: number;
+  /**
+   * Keep the filesystem when the runner exits (a snapshot), so the `completed` webhook can turn it into a
+   * warm base, keep it for inspection, or delete it. `forkFrom` starts from another sandbox's snapshot.
+   */
+  persist?: { forkFrom?: string };
 }
 
 export interface RunOneJobResult {
@@ -32,6 +37,23 @@ export interface RunOneJobResult {
   durationMs: number;
   /** Driver-specific usage figures for the cost summary, when known. */
   activeCpuMs?: number;
+  forkedFrom?: string;
+}
+
+export interface SandboxInfo {
+  name: string;
+  status: string;
+  createdAt: number;
+  tags: Record<string, string>;
+}
+
+/** Snapshot-capable drivers: warm starts and keep-on-failure. */
+export interface SnapshotOps {
+  /** Compute with `tag`, newest first. */
+  listTagged(key: string, value: string): Promise<SandboxInfo[]>;
+  setTags(name: string, tags: Record<string, string>): Promise<void>;
+  /** Removes compute and its snapshots. Idempotent. */
+  remove(name: string): Promise<void>;
 }
 
 export interface RunnerDriver {
@@ -40,4 +62,5 @@ export interface RunnerDriver {
   runOneJob(input: RunOneJobInput): Promise<RunOneJobResult>;
   /** Tear down the compute for a runner. Returns false if there was nothing running. Idempotent. */
   stop(runnerName: string): Promise<boolean>;
+  snapshots?: SnapshotOps;
 }

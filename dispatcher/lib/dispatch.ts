@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { cardinalLabel, idleTimeoutSec, runnerLabels, sizeForLabels } from './config';
 import { estimateCost } from './cost';
-import type { RunnerDriver } from './drivers/types';
+import type { RunnerDriver, RunnerSize } from './drivers/types';
 import {
   GitHubError,
   type JobSummary,
@@ -23,8 +24,9 @@ export interface WorkflowJobEvent {
     runner_name: string | null;
     created_at: string;
     conclusion: string | null;
+    head_branch: string | null;
   };
-  repository: { name: string; owner: { login: string } };
+  repository: { name: string; owner: { login: string }; default_branch: string };
   installation: { id: number };
 }
 
@@ -64,6 +66,10 @@ const SPEC_MAX = Number(process.env.CARDINAL_SPEC_MAX ?? 4);
 export const SWEEP_MIN_QUEUED_MS = 45_000;
 
 const SPEC_PREFIX = 'cardinal-spec-';
+/** Warm starts: fork each job from the last green run of the same job on the default branch. */
+export const WARM = process.env.CARDINAL_WARM !== '0';
+/** How long the completed handler waits for the dispatcher that ran the job to finish stopping it. */
+const SETTLE_MS = 4_000;
 
 /**
  * Decides what to do with a workflow_job event. Cheap and synchronous so the webhook can answer
@@ -75,11 +81,30 @@ export function plan(event: WorkflowJobEvent, deps: Deps): Plan {
   if (event.action === 'completed') {
     const runnerName = job.runner_name;
     if (!runnerName?.startsWith('cardinal-')) return { kind: 'ignore', reason: 'not a cardinal runner' };
+    const owner = event.repository.owner.login;
+    const repo = event.repository.name;
     return {
       kind: 'stop',
       run: async () => {
         const stopped = await deps.driver.stop(runnerName);
         if (stopped) console.log('cardinal stopped sandbox on job completion', { runnerName, jobId: job.id });
+        const snaps = deps.driver.snapshots;
+        if (!snaps || !WARM) return;
+        if (!stopped) await sleep(SETTLE_MS); // the dispatcher that ran it is probably mid-stop; let the snapshot land
+        const key = warmKey(owner, repo, job.name);
+        const onDefault = job.head_branch === event.repository.default_branch;
+        if (job.conclusion === 'success' && onDefault) {
+          await snaps.setTags(runnerName, { role: 'base' });
+          const bases = (await snaps.listTagged('warm', key)).filter((s) => s.tags.role === 'base' && s.name !== runnerName);
+          await Promise.all(bases.map((s) => snaps.remove(s.name).catch(() => {})));
+          console.log('cardinal warm base promoted', { repo: `${owner}/${repo}`, job: job.name, base: runnerName, replaced: bases.map((b) => b.name) });
+        } else if (job.conclusion === 'success') {
+          await snaps.remove(runnerName).catch((err) => console.warn('cardinal could not remove sandbox', { runnerName, err: String(err) }));
+        } else {
+          // Kept (until the snapshot TTL) so the failure can be opened and poked at.
+          await snaps.setTags(runnerName, { role: 'failed' }).catch(() => {});
+          console.log('cardinal kept failed job sandbox', { runnerName, conclusion: job.conclusion });
+        }
       },
     };
   }
@@ -103,6 +128,32 @@ export function plan(event: WorkflowJobEvent, deps: Deps): Plan {
   };
 }
 
+export function warmKey(owner: string, repo: string, jobName: string): string {
+  return 'w' + createHash('sha1').update(`${owner}/${repo}#${jobName}`).digest('hex').slice(0, 20);
+}
+
+const tagSafe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '-').slice(0, 60);
+
+function imageTag(size: RunnerSize): string {
+  return tagSafe(size.image ?? process.env.CARDINAL_IMAGE ?? 'none');
+}
+
+/** The newest green default-branch sandbox for this job, built from the image we'd boot today. */
+async function findWarmBase(deps: Deps, key: string, size: RunnerSize): Promise<string | undefined> {
+  const snaps = deps.driver.snapshots;
+  if (!snaps || !WARM) return undefined;
+  try {
+    const img = imageTag(size);
+    const base = (await snaps.listTagged('warm', key)).find((s) => s.tags.role === 'base' && s.status === 'stopped' && s.tags.img === img);
+    return base?.name;
+  } catch (err) {
+    console.warn('cardinal warm base lookup failed', { key, err: String(err) });
+    return undefined;
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** The push handler: boot runners for the jobs this push is about to queue, before GitHub queues them. */
 export function planPush(event: PushEvent, deps: Deps): Plan {
   if (event.deleted || !event.ref.startsWith('refs/heads/')) return { kind: 'ignore', reason: 'not a branch push' };
@@ -121,6 +172,7 @@ export function planPush(event: PushEvent, deps: Deps): Plan {
           const runnerName = `${SPEC_PREFIX}${event.after.slice(0, 7)}-${i}`;
           return startRunner(deps, event.installation.id, owner, repo, {
             runnerName,
+            jobName: j.name,
             labels: j.labels,
             idleTimeoutSec: SPEC_IDLE_SEC,
             tags: { spec: '1' },
@@ -181,11 +233,12 @@ function covers(runner: RepoRunner, jobLabels: string[]): boolean {
   return runnerLabels(jobLabels).every((l) => have.has(l.toLowerCase()));
 }
 
-async function dispatchJob(deps: Deps, installationId: number, owner: string, repo: string, job: Pick<JobSummary, 'id' | 'labels' | 'created_at'>) {
+async function dispatchJob(deps: Deps, installationId: number, owner: string, repo: string, job: Pick<JobSummary, 'id' | 'name' | 'labels' | 'created_at'>) {
   // JIT runners take any queued job with matching labels, so the runner may end up running a
   // sibling job. The name just has to be unique; it's also the sandbox name.
   await startRunner(deps, installationId, owner, repo, {
     runnerName: `cardinal-${job.id}`,
+    jobName: job.name,
     labels: job.labels,
     idleTimeoutSec,
     queuedAt: Date.parse(job.created_at),
@@ -197,10 +250,13 @@ async function startRunner(
   installationId: number,
   owner: string,
   repo: string,
-  opts: { runnerName: string; labels: string[]; idleTimeoutSec: number; tags?: Record<string, string>; queuedAt: number | undefined },
+  opts: { runnerName: string; jobName: string; labels: string[]; idleTimeoutSec: number; tags?: Record<string, string>; queuedAt: number | undefined },
 ) {
   const { runnerName, labels } = opts;
   const size = sizeForLabels(labels);
+  const key = warmKey(owner, repo, opts.jobName);
+  const forkFrom = await findWarmBase(deps, key, size);
+  const persist = deps.driver.snapshots && WARM ? { forkFrom } : undefined;
 
   // Mint the token while the VM boots; the driver awaits it before starting the runner.
   const jit = deps
@@ -217,7 +273,8 @@ async function startRunner(
       jobId: 0,
       runnerName,
       idleTimeoutSec: opts.idleTimeoutSec,
-      tags: opts.tags,
+      tags: { ...opts.tags, ...(persist ? { warm: key, role: 'job', img: imageTag(size) } : {}) },
+      persist,
       watchMs: deps.deadline - HANDOFF_MARGIN_MS - Date.now(),
     });
   } catch (err) {
@@ -235,6 +292,7 @@ async function startRunner(
     driver: deps.driver.name,
     vcpus: size.vcpus,
     speculative: Boolean(opts.tags?.spec),
+    warmStart: result.forkedFrom ?? false,
     queueToBootMs: opts.queuedAt === undefined || Number.isNaN(opts.queuedAt) ? undefined : runStart + result.bootMs - opts.queuedAt,
     bootMs: result.bootMs,
     durationMs: result.durationMs,

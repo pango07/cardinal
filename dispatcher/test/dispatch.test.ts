@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { plan, planPush, sweepRepo, type Deps, type PushEvent, type WorkflowJobEvent } from '@/lib/dispatch';
+import { plan, planPush, sweepRepo, warmKey, type Deps, type PushEvent, type WorkflowJobEvent } from '@/lib/dispatch';
 import { GitHubError } from '@/lib/github';
 
 function event(overrides: Partial<WorkflowJobEvent['workflow_job']> = {}, action: WorkflowJobEvent['action'] = 'queued'): WorkflowJobEvent {
   return {
     action,
     workflow_job: {
-      id: 42, run_id: 7, name: 'build', labels: ['cardinal'], runner_name: null,
+      id: 42, run_id: 7, name: 'build', labels: ['cardinal'], runner_name: null, head_branch: 'main',
       created_at: new Date().toISOString(), conclusion: null, ...overrides,
     },
-    repository: { name: 'repo', owner: { login: 'acme' } },
+    repository: { name: 'repo', owner: { login: 'acme' }, default_branch: 'main' },
     installation: { id: 99 },
   };
 }
@@ -40,6 +40,18 @@ function deps(): Mocked {
 }
 
 const run = (p: ReturnType<typeof plan>) => (p as { run: () => Promise<void> }).run();
+
+function withSnapshots(d: Mocked, bases: { name: string; status?: string; tags: Record<string, string> }[] = []) {
+  const snaps = {
+    listTagged: vi.fn().mockResolvedValue(bases.map((b) => ({ status: 'stopped', createdAt: 0, ...b }))),
+    setTags: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+  };
+  (d.driver as unknown as { snapshots: typeof snaps }).snapshots = snaps;
+  return snaps;
+}
+const KEY = warmKey('acme', 'repo', 'build');
+const IMG = (process.env.CARDINAL_IMAGE = 'cardinal-runner:v0.3').replace(/[^A-Za-z0-9_.-]/g, '-');
 
 describe('plan', () => {
   it('ignores jobs without a cardinal label and non-queued actions', () => {
@@ -94,6 +106,63 @@ describe('plan', () => {
     d.generateJitConfig.mockRejectedValue(new GitHubError(409, 'exists'));
     d.driver.runOneJob.mockImplementation(async ({ jitConfig }: { jitConfig: Promise<string> }) => { await jitConfig; });
     await expect(run(plan(event(), d))).resolves.toBeUndefined();
+  });
+
+  it('without snapshot support, boots cold and keeps nothing', async () => {
+    const d = deps();
+    await run(plan(event(), d));
+    const input = d.driver.runOneJob.mock.calls[0][0];
+    expect(input.persist).toBeUndefined();
+    expect(input.tags?.warm).toBeUndefined();
+  });
+
+  it('forks the newest green default-branch sandbox of the same job, built from the current image', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d, [
+      { name: 'cardinal-900', tags: { role: 'base', img: 'cardinal-runner-v0.2' } }, // older image: no
+      { name: 'cardinal-901', tags: { role: 'failed', img: IMG } },                  // not green: no
+      { name: 'cardinal-902', tags: { role: 'base', img: IMG } },                    // yes
+    ]);
+    await run(plan(event(), d));
+    expect(snaps.listTagged).toHaveBeenCalledWith('warm', KEY);
+    const input = d.driver.runOneJob.mock.calls[0][0];
+    expect(input.persist).toEqual({ forkFrom: 'cardinal-902' });
+    expect(input.tags).toMatchObject({ warm: KEY, role: 'job', img: IMG });
+  });
+
+  it('persists even with no base yet, so this run can become one', async () => {
+    const d = deps();
+    withSnapshots(d);
+    await run(plan(event(), d));
+    expect(d.driver.runOneJob.mock.calls[0][0].persist).toEqual({ forkFrom: undefined });
+  });
+
+  it('on green default-branch completion: promotes the sandbox to base and removes the previous base', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d, [
+      { name: 'cardinal-42', tags: { role: 'base', img: IMG } },
+      { name: 'cardinal-30', tags: { role: 'base', img: IMG } },
+    ]);
+    await run(plan(event({ runner_name: 'cardinal-42', conclusion: 'success', head_branch: 'main' }, 'completed'), d));
+    expect(snaps.setTags).toHaveBeenCalledWith('cardinal-42', { role: 'base' });
+    expect(snaps.remove).toHaveBeenCalledWith('cardinal-30');
+    expect(snaps.remove).not.toHaveBeenCalledWith('cardinal-42');
+  });
+
+  it('on green feature-branch completion: removes the sandbox', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d);
+    await run(plan(event({ runner_name: 'cardinal-42', conclusion: 'success', head_branch: 'feat/x' }, 'completed'), d));
+    expect(snaps.remove).toHaveBeenCalledWith('cardinal-42');
+    expect(snaps.setTags).not.toHaveBeenCalled();
+  });
+
+  it('on failure: keeps the sandbox, tagged failed', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d);
+    await run(plan(event({ runner_name: 'cardinal-42', conclusion: 'failure', head_branch: 'main' }, 'completed'), d));
+    expect(snaps.setTags).toHaveBeenCalledWith('cardinal-42', { role: 'failed' });
+    expect(snaps.remove).not.toHaveBeenCalled();
   });
 
   it('stops the sandbox by runner name when a cardinal job completes', async () => {
