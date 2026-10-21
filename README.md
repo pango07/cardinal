@@ -1,6 +1,8 @@
-# Cardinal
+<p align="center">
+  <img src="assets/cardinal-logo.png" alt="Cardinal" width="520">
+</p>
 
-**Bring-your-own-compute GitHub Actions runners. Ephemeral, billed per second, zero GitHub minutes.**
+<p align="center"><strong>Bring-your-own-compute GitHub Actions runners. Ephemeral, billed per second, zero GitHub minutes.</strong></p>
 
 A job is queued, a Firecracker microVM boots from a pre-baked image, the runner inside claims one job, runs it and exits, and the VM is destroyed. You pay for the seconds the job ran. Nothing sits idle.
 
