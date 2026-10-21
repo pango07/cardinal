@@ -22,10 +22,6 @@ fi
 idle_timeout="${CARDINAL_IDLE_TIMEOUT:-300}"
 cd /home/runner
 
-# The VM's hostname isn't in /etc/hosts, which makes every `sudo` in a job warn "unable to resolve host".
-grep -q "$(hostname)" /etc/hosts 2>/dev/null \
-  || echo "127.0.0.1 $(hostname)" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
-
 ts() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
 echo "cardinal: runner v$(cat .runner-version) starting at $(ts)"
 

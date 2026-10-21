@@ -53,6 +53,21 @@ Details: [docs/LIMITS.md](docs/LIMITS.md).
 
 At iad1 Pro rates, a 10-minute job on 2 vCPU / 4 GB at 50% CPU costs about **$0.025**: $0.011 active CPU plus $0.014 memory. GitHub charges $0.08 for the same 10 minutes once you're past free minutes. Active CPU only bills while the CPU is actually busy, so time spent waiting on `npm install` downloads is nearly free. Ingress is free. Each job logs its own estimate.
 
+## Why not Vercel Daemons?
+
+[Vercel Daemons](https://vercel.com/docs/daemons) (public beta) run a fixed number of always-on container instances, and the docs list "self-hosted CI runners" as a use case. It's a good fit for a small, steady pool. Cardinal makes a different trade-off:
+
+| | Daemons (beta) | Cardinal (Sandbox) |
+|---|---|---|
+| Idle cost | Instances run 24/7. You pay provisioned memory around the clock | **Nothing runs between jobs.** Memory bills only while a job runs |
+| Burst | Fixed instance count, no autoscaling. Pro quota: 16 vCPUs running at once (8 two-vCPU runners) | One sandbox per queued job, up to the plan's sandbox quota (Pro: 10,000) |
+| Biggest machine | 4 vCPU / 8 GB | 8 vCPU / 16 GB on Pro (32 vCPU on Enterprise) |
+| Isolation between jobs | Instances restart in place; disk is ephemeral, but jobs share an instance's lifetime | **Fresh Firecracker microVM per job**, destroyed afterwards |
+| Pickup latency | ~0: the runner is already listening | ~3–4 s from queue to running (measured) |
+| Job length | Unbounded | Sandbox timeout (Pro: 24h) |
+
+If you want zero-latency pickup for a handful of steady jobs, a Daemons-backed warm pool is a reasonable future driver. For bursty CI that sits idle most of the day, per-job sandboxes are cheaper and isolate better.
+
 ## Get started
 
 [docs/SETUP.md](docs/SETUP.md): Vercel project, image push, GitHub App, deploy, first green job.

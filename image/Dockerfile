@@ -10,11 +10,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # actions/runner runtime deps (.NET needs ICU, OpenSSL, Kerberos, zlib, lttng),
 # plus the tools nearly every job reaches for. 24.04 renamed a few libs to *t64.
+# libnss-myhostname: Sandbox bind-mounts a read-only /etc/hosts without the VM's hostname, so every
+# `sudo` would warn "unable to resolve host". nss-myhostname resolves it without touching /etc/hosts.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git jq unzip zip tar gzip xz-utils \
       libicu74 libssl3t64 libkrb5-3 zlib1g liblttng-ust1t64 \
-      sudo \
-    && rm -rf /var/lib/apt/lists/*
+      sudo libnss-myhostname \
+    && rm -rf /var/lib/apt/lists/* \
+    && sed -i 's/^hosts:.*/hosts:          files myhostname dns/' /etc/nsswitch.conf
 
 # Node 22 on PATH. The runner bundles its own node for JS actions, but job steps often call `node`/`npm`.
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
