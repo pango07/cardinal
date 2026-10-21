@@ -53,6 +53,18 @@ Details: [docs/LIMITS.md](docs/LIMITS.md).
 
 At iad1 Pro rates, a 10-minute job on 2 vCPU / 4 GB at 50% CPU costs about **$0.025**: $0.011 active CPU plus $0.014 memory. GitHub charges $0.08 for the same 10 minutes once you're past free minutes. Active CPU only bills while the CPU is actually busy, so time spent waiting on `npm install` downloads is nearly free. Ingress is free. Each job logs its own estimate.
 
+## Speed
+
+Against a 4 vCPU GitHub-hosted runner ([full results](bench/RESULTS.md), 5 rounds, medians):
+
+| Job | `ubuntu-latest` | `cardinal-4x` |
+|---|---|---|
+| `create-next-app` + `next build` | 41 s | **31 s** |
+| clone + `npm install` + `npm test` (express) | 17 s | **13 s** |
+| Pure CPU (sha256, single + multi-thread) | **18 s** | 24 s |
+
+Install- and network-heavy jobs run faster. Per-thread CPU is about 60% slower, and pickup adds about 3 s per job.
+
 ## Why not Vercel Daemons?
 
 [Vercel Daemons](https://vercel.com/docs/daemons) (public beta) run a fixed number of always-on container instances, and the docs list "self-hosted CI runners" as a use case. It's a good fit for a small, steady pool. Cardinal makes a different trade-off:

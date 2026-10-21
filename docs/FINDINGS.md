@@ -11,6 +11,25 @@ Status as of 2026-10-20 (actions/runner 2.338.0, @vercel/sandbox 3.8.0). "Measur
 | 5 | arm64 runner in an arm64 sandbox | Not started | Phase 3 |
 | 6 | Snapshot boot vs image boot | Not started | Phase 3 |
 
+## Phase 2 acceptance (live, 2026-10-20)
+
+Production dispatcher on Vercel Pro (iad1), image `cardinal-runner:v0.3`, repo `pango07/cardinal-test`.
+
+| Check | Result |
+|---|---|
+| Push / dispatch → queued → in progress → success, no human action | ✅ `hello-cardinal` green in 18 s end to end |
+| Webhook responds < 2 s | ✅ ~0.55 s round trip (the slow work runs in `waitUntil` after the 202) |
+| Sandbox stopped ≤ 30 s after job completion | ✅ ~1 s: the dispatcher stops it as soon as the runner exits; the later `completed` webhook finds it already stopped |
+| Concurrent jobs get their own sandboxes | ✅ 4 jobs dispatched together → 4 sandboxes, 2 of them running 30 s side by side |
+| Failed job (exit 1) tears down cleanly | ✅ job marked failed, sandbox stopped 5 s after creation |
+| `cardinal-4x` sizing | ✅ `nproc` = 4, 8 GB RAM |
+
+From the per-job summaries (6 jobs): Sandbox.create **640–1003 ms**, queue → sandbox up **3.1–3.8 s** (one outlier at 7.3 s, when 4 jobs queued at once), estimated cost **$0.0016–0.003 per job**.
+
+## Speed vs GitHub-hosted
+
+See [bench/RESULTS.md](../bench/RESULTS.md). `cardinal-4x` beats a 4 vCPU `ubuntu-latest` by about 24% on `next build` and on npm install + test. It loses about 60% per thread on pure CPU work, and pickup takes about 3 s longer.
+
 ## Other measurements
 
 - **Image size: 378 MB** (`docker image inspect`, linux/amd64, actions/runner 2.338.0, Node 22.23). Target was < 600 MB.
