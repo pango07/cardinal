@@ -1,0 +1,21 @@
+# Copy to .github/workflows/hello-cardinal.yml in a repo where the Cardinal GitHub App is installed.
+name: hello-cardinal
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: cardinal          # or cardinal-4x / cardinal-8x for bigger sandboxes
+    steps:
+      - uses: actions/checkout@v4
+      - name: Where am I?
+        run: |
+          echo "runner: $RUNNER_NAME"
+          uname -a
+          nproc && free -h
+          node --version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: echo "hello from a microVM that will not exist in a minute"
