@@ -64,7 +64,7 @@ Measured, not estimated: GitHub queue → runner listening in **3 s**, sandbox c
 | Workload | Label | What's in the box |
 |---|---|---|
 | Node, Python, Go, Rust, anything `apt` can install | `cardinal` · `cardinal-4x` · `cardinal-8x` | Ubuntu 24.04, Node 22, git, jq. 2 / 4 / 8 vCPU with 2 GB per vCPU |
-| **Android** | `cardinal-android` | Everything above plus Temurin JDK 21 and the Android SDK (API 36/37, build-tools 36.1). 8 vCPU / 16 GB. No `setup-java`, no license step |
+| **Android** | `cardinal-android` | Everything above plus Temurin JDK 21 and the Android SDK (API 36/37, build-tools 36.1). 4 vCPU / 8 GB. No `setup-java`, no license step |
 | **macOS, iOS, Xcode** | `cardinal-macos` | macOS 26 with Xcode 26.4.1 and iOS simulators, in a fresh Tart VM on an Apple Silicon host you own. See [agent/](agent/) |
 | **Your own machines** | `cardinal-docker` | The same runner image as a fresh container per job, on any box running Docker: `CARDINAL_BACKEND=docker node agent/src/main.ts run --repo you/app` |
 
@@ -106,7 +106,7 @@ Measured on a real day of use (88 jobs, including ten full Android builds and 45
 |---|---|---|
 | 30 s test run | $0.006 (rounded up to a minute) | **~$0.002** |
 | 10 min, 2 vCPU, 50% busy | $0.06 | **~$0.025** |
-| 7 min Android build, 8 vCPU, cache upload | $0.17 (8-core larger runner) | ~$0.12 |
+| 9 min Android build, 4 vCPU, no cache upload | $0.11 (4-core larger runner) | ~$0.07 |
 | An empty queue, all month | $0 | $0 |
 
 GitHub rates are the 2026 list prices for private repos ($0.006/min for 2 cores, scaling with cores). Short and bursty jobs are several times cheaper on Cardinal. Long, CPU-bound jobs on big VMs cost about the same as GitHub's larger runners, because a busy CPU-second costs what it costs. What you don't pay for is idle time, minute rounding, or the queue.
