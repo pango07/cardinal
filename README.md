@@ -89,14 +89,18 @@ Install- and build-heavy jobs win on Cardinal (fast network, fast boot). Per-thr
 
 ## Cost
 
-Vercel Sandbox, iad1, Pro rates: $0.128 per active-CPU-hour, $0.0212 per GB-hour of memory, nothing for ingress. Active CPU only counts while the CPU is busy, so time spent waiting on `npm install` downloads is nearly free.
+Vercel Sandbox, iad1, Pro rates: $0.128 per active-CPU-hour, $0.0212 per GB-hour of memory, **$0.15 per GB of egress**, nothing for ingress. Active CPU counts only while the CPU is busy, so waiting on downloads is nearly free. Egress is mostly `actions/cache`-style uploads back to GitHub; the dispatcher itself costs about a cent a day.
+
+Measured on a real day of use (88 jobs, including ten full Android builds and 45 benchmark runs): **$2.23**, about 2.5 ¢ per job. The honest comparison:
 
 | Job | GitHub-hosted (private repo) | Cardinal |
 |---|---|---|
+| 30 s test run | $0.008 (rounded up to a minute) | **~$0.002** |
 | 10 min, 2 vCPU, 50% busy | $0.08 | **~$0.025** |
-| 5 min Android build, 8 vCPU | $0.16 (8-core larger runner) | **~$0.015** |
-| A `next build` from the benchmark above | $0.008 (rounded up to 1 min) | **~$0.003** |
+| 7 min Android build, 8 vCPU, cache upload | $0.16 (8-core larger runner) | ~$0.12 |
 | An empty queue, all month | $0 | $0 |
+
+Short and bursty jobs are several times cheaper. Long, CPU-bound jobs on big VMs cost about the same as GitHub's larger runners, because a busy CPU-second costs what it costs. What you don't pay for is idle time, minute rounding, or the queue.
 
 Usage comes out of the Pro plan's $20/month credit first.
 
