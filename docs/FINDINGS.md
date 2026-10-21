@@ -30,6 +30,21 @@ From the per-job summaries (6 jobs): Sandbox.create **640–1003 ms**, queue →
 
 See [bench/RESULTS.md](../bench/RESULTS.md). `cardinal-4x` beats a 4 vCPU `ubuntu-latest` by about 24% on `next build` and on npm install + test. It loses about 60% per thread on pure CPU work, and pickup takes about 3 s longer.
 
+## Snapshots and forks (2026-10-21, live)
+
+| Operation | Measured |
+|---|---|
+| `sandbox.snapshot()` of a 607 MB filesystem (11k files) | 2.1 s |
+| `Sandbox.create({ source: snapshot })`, files immediately usable | 1.4 s |
+| Three parallel creates from one snapshot | 1.35 s total |
+| `Sandbox.fork()` of a stopped persistent sandbox | 1.36 s |
+| Warm-started job vs cold (same `npm install next` job) | boot 1.0 s vs 0.8 s; install 3 s vs 12 s; job 7 s vs 20 s |
+| `open` a failed job (fork + ready) | 1.6 s |
+
+Snapshot storage is $0.08/GB-month (15 GB included on Pro). Every job sandbox is persistent; the `completed` webhook decides: green on default branch → warm base for (repo, job name), replacing the previous; green elsewhere → deleted; failed → kept 7 days. State is sandbox tags (`warm`, `role`, `img`); no database. A base is only reused when its `img` tag matches the image we'd boot today, so image upgrades start a new lineage.
+
+Caveat: `actions/checkout` runs `git clean -ffdx` by default, which deletes ignored files such as `node_modules`. Workflows that want in-workspace reuse set `clean: false`. Home caches (`~/.npm`, `~/.gradle`, `_work/_tool`) survive either way.
+
 ## Other measurements
 
 - **Image size: 378 MB** (`docker image inspect`, linux/amd64, actions/runner 2.338.0, Node 22.23). Target was < 600 MB.

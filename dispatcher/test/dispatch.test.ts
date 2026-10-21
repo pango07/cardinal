@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { plan, planPush, sweepRepo, warmKey, type Deps, type PushEvent, type WorkflowJobEvent } from '@/lib/dispatch';
+import { plan, planPush, sweepRepo, sweepSandboxes, warmKey, type Deps, type PushEvent, type WorkflowJobEvent } from '@/lib/dispatch';
 import { GitHubError } from '@/lib/github';
 
 function event(overrides: Partial<WorkflowJobEvent['workflow_job']> = {}, action: WorkflowJobEvent['action'] = 'queued'): WorkflowJobEvent {
@@ -245,5 +245,25 @@ describe('sweepRepo', () => {
     const r = await sweepRepo(d, 99, 'acme', 'repo');
     expect(r.removed).toBe(1);
     expect(d.deleteRunner).toHaveBeenCalledWith(99, 'acme', 'repo', 555);
+  });
+});
+
+describe('sweepSandboxes', () => {
+  const h = 3_600_000;
+  it('removes stale undecided, opened and expired-failed records, keeps bases and fresh failures', async () => {
+    const d = deps();
+    const snaps = withSnapshots(d);
+    snaps.listTagged.mockResolvedValue([
+      { name: 'base', status: 'stopped', createdAt: Date.now() - 30 * 24 * h, tags: { role: 'base' } },
+      { name: 'fresh-fail', status: 'stopped', createdAt: Date.now() - 2 * h, tags: { role: 'failed' } },
+      { name: 'old-fail', status: 'stopped', createdAt: Date.now() - 8 * 24 * h, tags: { role: 'failed' } },
+      { name: 'legacy', status: 'stopped', createdAt: Date.now() - 2 * h, tags: {} },
+      { name: 'undecided-fresh', status: 'stopped', createdAt: Date.now() - 5 * 60_000, tags: { role: 'job' } },
+      { name: 'undecided-old', status: 'stopped', createdAt: Date.now() - h, tags: { role: 'job' } },
+      { name: 'opened', status: 'stopped', createdAt: Date.now() - 2 * h, tags: { role: 'open' } },
+      { name: 'running-job', status: 'running', createdAt: Date.now() - 3 * h, tags: { role: 'job' } },
+    ]);
+    const r = await sweepSandboxes(d);
+    expect(r.removed.sort()).toEqual(['legacy', 'old-fail', 'opened', 'undecided-old']);
   });
 });

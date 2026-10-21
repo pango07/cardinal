@@ -216,6 +216,35 @@ export async function sweepRepo(deps: Deps, installationId: number, owner: strin
   return { dispatched, removed };
 }
 
+/**
+ * Housekeeping across all of this project's sandboxes: records that no decision will ever come for.
+ * Bases and fresh failures are kept; the snapshot TTL bounds everything else.
+ */
+export async function sweepSandboxes(deps: Deps): Promise<{ removed: string[] }> {
+  const snaps = deps.driver.snapshots;
+  if (!snaps) return { removed: [] };
+  const now = Date.now();
+  const removed: string[] = [];
+  for (const s of await snaps.listTagged('app', 'cardinal')) {
+    if (s.status !== 'stopped' && s.status !== 'failed' && s.status !== 'aborted') continue;
+    const age = now - s.createdAt;
+    const role = s.tags.role;
+    const stale =
+      role === 'base' ? false
+      : role === 'failed' ? age > FAILED_KEEP_MS
+      : role === 'open' ? age > OPEN_KEEP_MS
+      : age > UNDECIDED_KEEP_MS; // 'job' with no completed webhook, speculative runners, or pre-tag records
+    if (!stale) continue;
+    await snaps.remove(s.name).catch(() => {});
+    removed.push(s.name);
+  }
+  return { removed };
+}
+
+const FAILED_KEEP_MS = Number(process.env.CARDINAL_SNAPSHOT_DAYS ?? 7) * 24 * 3_600_000;
+const OPEN_KEEP_MS = 60 * 60_000;
+const UNDECIDED_KEEP_MS = 30 * 60_000;
+
 // ---------------------------------------------------------------------------------------------------
 
 async function alreadyCovered(deps: Deps, installationId: number, owner: string, repo: string, jobId: number, labels: string[]) {

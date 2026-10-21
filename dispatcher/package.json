@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "node --env-file-if-exists=.env.local scripts/smoke.ts",
-    "create-app": "node scripts/create-app.ts"
+    "create-app": "node scripts/create-app.ts",
+    "open": "node --env-file-if-exists=.env.local scripts/open.ts"
   },
   "engines": {
     "node": "22.x"

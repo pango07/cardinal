@@ -51,6 +51,14 @@ Four properties fall out of that:
 
 Measured, not estimated: GitHub queue → runner listening in **3 s**, sandbox create in **0.6–1.0 s**, teardown within **1 s** of the runner exiting, and a `next build` job that runs **24% faster** than on GitHub's 4 vCPU runner ([benchmarks](bench/RESULTS.md)).
 
+## Three things no other runner does
+
+**Jobs start where the last green one ended.** Every job runs on a fork of the filesystem left by the last successful run of *that job* on your default branch, about a second after it's queued. `node_modules`, `~/.gradle`, `~/.npm`, the tool cache: already there. No cache action, no cache keys, no upload at the end of the job (which is also where most of the egress bill went). Measured on the same job, back to back: `npm install` 12 s → 3 s, job 20 s → 7 s. Add `clean: false` to `actions/checkout` to keep in-workspace files like `node_modules`; home-directory caches carry over regardless. Set `CARDINAL_WARM=0` to turn it off.
+
+**Open a failed job as a live machine.** Failed jobs are kept for 7 days. `npm run open -- <job url>` forks the exact filesystem the job died in, in about 1.5 s, and drops you into a shell: the workspace, the half-written build output, the environment the job saw (credentials and runner temp are scrubbed first). The original is untouched, so two people can open the same failure. Green jobs on other branches are deleted; green jobs on the default branch become the next warm base.
+
+**Runners boot before GitHub asks.** On every push, Cardinal boots a runner for each job that branch ran last time, so when GitHub queues the jobs a few seconds later they're picked up by runners that are already listening. Wrong guesses idle out after 90 s for a fraction of a cent. A once-a-minute sweep re-dispatches anything that fell through and removes dead runners. (Needs the App's *Contents: read* permission for the `push` event; setup explains.)
+
 ## What runs on it
 
 | Workload | Label | What's in the box |

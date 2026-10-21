@@ -1,6 +1,6 @@
 import { waitUntil } from '@vercel/functions';
 import { deps } from '@/lib/deps';
-import { sweepRepo } from '@/lib/dispatch';
+import { sweepRepo, sweepSandboxes } from '@/lib/dispatch';
 import { installationRepos } from '@/lib/github';
 
 // Runs every minute (vercel.json). Re-dispatches cardinal jobs that have waited too long and removes dead runners.
@@ -25,8 +25,11 @@ export async function GET(req: Request) {
       console.error('cardinal sweep failed', { repo: `${owner}/${repo}`, err });
     }
   });
+  const housekeeping = sweepSandboxes(deps(deadline))
+    .then((r) => { if (r.removed.length) console.log('cardinal sweep removed sandboxes', r); return r; })
+    .catch((err) => { console.error('cardinal sandbox sweep failed', { err }); return { removed: [] as string[] }; });
   // Dispatches started by the sweep keep running after the response.
-  waitUntil(Promise.all(work));
+  waitUntil(Promise.all([...work, housekeeping]));
   await Promise.race([Promise.all(work), new Promise((r) => setTimeout(r, 20_000))]);
-  return Response.json({ repos: repos.length, results });
+  return Response.json({ repos: repos.length, results, sandboxes: await Promise.race([housekeeping, new Promise((r) => setTimeout(() => r('pending'), 20_000))]) });
 }

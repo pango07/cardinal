@@ -72,6 +72,10 @@ vercel env add GITHUB_WEBHOOK_SECRET production
 ```
 </details>
 
+### Optional: pre-boot on push
+
+Runners can boot on `push`, before GitHub queues the jobs. The App needs one more permission for that event: in the App's settings → *Permissions & events*, set **Contents: Read-only**, tick **Push** under *Subscribe to events*, save, then accept the new permission on each installation. Nothing else changes; without it Cardinal just reacts to `workflow_job.queued` as before.
+
 ## 5. Redeploy
 
 ```bash
